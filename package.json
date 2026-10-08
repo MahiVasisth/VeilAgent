@@ -1,0 +1,21 @@
+{
+  "name": "veil8004",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "engines": { "bun": ">=1.4.2", "node": ">=22" },
+  "workspaces": [
+    "contracts",
+    "sdk",
+    "cre",
+    "services/sealed-store",
+    "services/mock-screening",
+    "scripts",
+    "frontend"
+  ],
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

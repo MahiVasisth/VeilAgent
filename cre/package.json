@@ -1,0 +1,11 @@
+{
+  "name": "@veil8004/cre",
+  "private": true,
+  "type": "module",
+  "description": "Pure workflow handlers, CRE wiring and the local DON simulator.",
+  "dependencies": {
+    "@chainlink/cre-sdk": "1.23.0",
+    "@veil8004/sdk": "workspace:*",
+    "viem": "2.57.4"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "@veil8004/mock-screening",
+  "private": true,
+  "type": "module",
+  "description": "MOCK screening API (fixed hit list). Runs on Bun.serve; no runtime dependencies."
+}

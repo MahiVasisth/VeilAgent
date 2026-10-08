@@ -1,0 +1,290 @@
+# Phase 0: Verify the unknowns
+
+Written 2026-10-08 against the installed packages listed under [Pinned versions](#pinned-versions).
+Every answer below says how it was checked: **source** (read in the installed package or repo),
+**chain** (read-only `cast` call to Monad testnet, chain 10143), or **OPEN** (needs your CRE
+account or a human decision; the exact action is given).
+
+The exit criterion for Phase 0 is a written answer per item and a fallback for each "no".
+Items marked OPEN must be closed before the phase that depends on them, not before Phase 1.
+
+## Summary
+
+| # | Question | Answer | Status |
+|---|---|---|---|
+| Q1 | Can CRE write to Monad testnet? | SDK: yes. Account and forwarder: unconfirmed | **OPEN** (account) |
+| Q2 | Can a workflow trigger at a deadline? | Yes, through the EVM Log trigger on `BiddingClosed` | Confirmed (source) |
+| Q3 | What does Confidential HTTP hide? | Secrets and, optionally, the response. Not the workflow inputs | Confirmed (source) |
+| Q4 | Confidential Workflows access | Unknown | **OPEN** (request) |
+| Q5 | ERC-8004 registries on Monad testnet | Identity and Reputation confirmed. A canonical Validation Registry **also exists** | Confirmed (chain); **OPEN** (decision) |
+| Q6 | ERC-8004 call rules | Confirmed, with three nuances | Confirmed (source) |
+| Q7 | Semaphore on Monad | No deployment; deploy our own | Confirmed (source + chain) |
+| Q8 | Monad testnet settings | Chain ID 10143, RPC `https://testnet-rpc.monad.xyz` | Confirmed (chain) |
+| H1–H5 | Hand checklist | — | **OPEN** |
+| Q9 | Does sealed-box decryption run inside a workflow? (from H2) | Probably not with libsodium | **OPEN** (simulate); fallback recommended now |
+
+---
+
+## Q1. Can CRE write to Monad testnet?
+
+**Confirmed from source (SDK side).** `@chainlink/cre-sdk@1.23.0` (spec minimum: 1.19.0) ships
+`dist/generated/chain-selectors/testnet/evm/monad-testnet.js`:
+
+- chain-name `monad-testnet`, chainId `10143`, selector `2183018362218727504`
+- `monad-testnet` is in `EVMClient.SUPPORTED_CHAIN_SELECTORS` (capability `evm@1.0.0`), so
+  `logTrigger`, `callContract`, `filterLogs` and `writeReport` all accept it.
+
+**OPEN: account side and forwarder address.**
+
+1. Install the CRE CLI (not installed on this machine). The latest release is v1.37.0
+   (2026-10-05); the spec needs v1.30.0 or later. Follow
+   <https://docs.chain.link/cre/getting-started/cli-installation>, or download
+   `cre_darwin_arm64.zip` from <https://github.com/smartcontractkit/cre-cli/releases/tag/v1.37.0>.
+2. `cre version` → confirm ≥ 1.30.0.
+3. `cre login`
+4. `cre workflow supported-chains` (the command the spec names). If this CLI version has no such
+   subcommand, run `cre workflow --help` and record the equivalent here.
+5. Open the CRE **Forwarder Directory** docs page, copy the `monad-testnet` forwarder
+   address into `.env` as `CRE_FORWARDER_ADDRESS`, and record it here.
+
+**Fallback if no:** run `cre workflow simulate` plus the local runner (Anvil + MockForwarder)
+for the demo, and ask the Chainlink mentor to enable Monad testnet.
+
+## Q2. Can a workflow trigger at a deadline?
+
+**Confirmed from source.** SDK 1.23.0 exposes these trigger capabilities: `cron-trigger@1.0.0`,
+`http-trigger@1.0.0-alpha`, and the EVM log trigger (`EVMClient.logTrigger`, in `evm@1.0.0`).
+There is no "at timestamp T" trigger, so the spec's design stands: anyone calls `closeBidding`
+after the deadline, which emits `BiddingClosed`, and W3 triggers on that log.
+
+To simulate a log trigger you need a real transaction hash. The pattern from Chainlink's
+`event-reactor` template:
+
+```bash
+cre workflow simulate <workflow-dir> --target staging-settings --non-interactive \
+  --trigger-index 0 --evm-tx-hash <tx that emitted the event> --evm-event-index 0
+```
+
+## Q3. What does Confidential HTTP hide?
+
+**Confirmed from source.** The capability is `confidential-http@1.0.0-alpha` (alpha). Its request type
+(`ConfidentialHTTPRequestJson`) has:
+
+- `vaultDonSecrets: [{ key, namespace, owner }]`: secrets injected inside the enclave
+- `request: { url, method, bodyString | bodyBytes, multiHeaders, templatePublicValues, timeout, customRootCaCertPem, encryptOutput }`
+- `encryptOutput: true` AES-GCM-encrypts the response with the vault secret named
+  `san_marino_aes_gcm_encryption_key`
+
+`templatePublicValues` and the request fields are supplied by the workflow, so the nodes see
+them. **Claim credential hiding only**, as the spec says. No change to the claims table.
+
+## Q4. Confidential Workflows access
+
+**OPEN.** This can't be checked from packages. `cre-templates` has a
+`starter-templates/confidential-workflows/` folder (at commit `d0223f3`), so the feature exists, but access is per account.
+
+- Action: ask the Chainlink mentor for Confidential Workflows access on your account and record the answer here.
+- Build without it: W1 reports `Tier.Don`, and the README marks input hiding from node operators as *designed, not demoed*.
+
+## Q5. ERC-8004 registries on Monad testnet
+
+**Confirmed on-chain** (read-only `cast` calls on 2026-10-08):
+
+| Contract | Address | Code | `getVersion()` | Notes |
+|---|---|---|---|---|
+| IdentityRegistry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | proxy | `2.0.0` | impl `0x7274e874ca62410a93bd8bf61c69d8045e399c02`; agent 0 exists |
+| ReputationRegistry | `0x8004B663056A597Dffe9eCcC1965A193B7388713` | proxy | `2.0.0` | `getIdentityRegistry()` = Identity above |
+| ValidationRegistry | `0x8004Cb1BF31DAf7788923b405b754f57acEB4272` | proxy | `2.0.0` | `getIdentityRegistry()` = Identity above |
+
+**Difference from the spec:** the spec says no Validation Registry is listed. The erc-8004-contracts README
+does not list one, but `scripts/addresses.ts` (`TESTNET_ADDRESSES.validationRegistry`) does,
+and it is live on Monad testnet. The README warning that the Validation Registry part of the spec "is still under active
+update" still applies.
+
+**OPEN: decision.** Pick one:
+
+- **(a) Recommended, and as the spec says:** deploy our own `ValidationRegistryUpgradeable` (same
+  source, v2.0.0) on testnet behind the adapter. The canonical one can be upgraded under us, and the README doesn't list it.
+- (b) Point the adapter at `0x8004Cb1B…4272`. The mirror then lands in the registry other ERC-8004 indexers
+  read, which helps the "interop" story. Only the adapter address changes.
+
+Both run through the same adapter, so this can be decided as late as Phase 2.
+
+## Q6. ERC-8004 call rules
+
+**Confirmed from source** (`lib/erc-8004-contracts/contracts/*.sol` at `b9e466c`, matching
+`ERC8004SPEC.md` at the same commit):
+
+| Rule in spec | Source | Match |
+|---|---|---|
+| `validationRequest` only by the agent's owner or operator | `ValidationRegistryUpgradeable.validationRequest`: `msg.sender == ownerOf` or `isApprovedForAll(owner, sender)` or `getApproved(agentId) == sender` | ✔ |
+| `validationResponse` only by the named validator | `require(msg.sender == s.validatorAddress, "not validator")` | ✔ |
+| `giveFeedback` rejects the agent's owner and operators | `require(!identity.isAuthorizedOrOwner(msg.sender, agentId))` | ✔ |
+| `getSummary` needs non-empty client list | Reputation: `revert("clientAddresses required")` | ✔ (Reputation only; see I-6) |
+
+Nuances that affect our contracts are listed as I-1 to I-7 below.
+
+## Q7. Semaphore on Monad
+
+**Confirmed (source + chain).** `@semaphore-protocol/utils@4.14.3` lists no Monad network. The three V4
+canonical addresses it ships (`0x8A1fd199…693D`, `0x4DeC9E37…31f8`, `0xB43122Ec…599a`) have no
+code on Monad testnet. Plan as in the spec: deploy `SemaphoreVerifier`, `PoseidonT3` (an external
+library, so it must be linked) and `Semaphore` from `@semaphore-protocol/contracts@4.14.3`. All three
+compile under solc 0.8.26 with the remappings in `contracts/foundry.toml`.
+
+**Fallback if deployment fails:** a minimal membership-proof contract, or an allowlist with nullifiers, labeled as a stand-in.
+
+## Q8. Monad testnet settings
+
+**Confirmed on-chain.** `cast chain-id --rpc-url https://testnet-rpc.monad.xyz` returns `10143`. Both are
+in `.env.example`.
+
+## Q9. Does sealed-box decryption run inside a workflow? (hand item H2)
+
+**OPEN, and probably no with libsodium.** Evidence from source:
+
+- `@chainlink/cre-sdk` README, *Runtime Compatibility Constraints*: workflows are compiled to WASM and run
+  under **Javy (QuickJS)**. Node built-ins (`node:crypto`, …) and browser globals (`fetch`,
+  `setTimeout`, …) are not available.
+- `libsodium@0.8.4` (under `libsodium-wrappers@0.8.4`) loads by calling
+  `WebAssembly.instantiate`. `dist/modules/` holds only that one file, with no `use asm` build. QuickJS has
+  no `WebAssembly` global.
+
+**Action:** once the CLI is installed, compile and simulate a probe workflow that imports `libsodium-wrappers`
+and calls `crypto_box_seal_open`. Record the result here.
+
+**Fallback (recommended to adopt now, behind the same `seal` interface):** pure-JS sealed boxes.
+X25519 from `@noble/curves`, XSalsa20-Poly1305 from `@noble/ciphers`, and the nonce
+`blake2b(epk ‖ recipientPk, 24)` from `@noble/hashes` (already a cre-sdk dependency, 2.2.0). These produce
+the same bytes as libsodium's `crypto_box_seal`, so clients can keep libsodium.
+Not installed yet, pending your decision.
+
+---
+
+## Hand checklist (from the spec)
+
+| # | Item | Status | Exact action |
+|---|---|---|---|
+| H1 | Request Confidential Workflows access | **OPEN** | Message the Chainlink mentor; record the answer in Q4 |
+| H2 | Confirm sealed-box decryption runs inside a workflow | **OPEN** | See Q9 |
+| H3 | Read hackathon rules (eligibility, judging, submission format) | **OPEN** | Human; record key constraints here |
+| H4 | Read ACTA and the Confidential Agent Policy Verdicts draft; message the ACTA author | **OPEN** | Human |
+| H5 | Re-read ERC8004SPEC.md at the installed commit | **Done for interfaces** (`b9e466c`, 2026-08-15) | Human read of non-interface sections still worth doing |
+
+---
+
+## Interface differences: installed source vs. spec
+
+The installed source wins in each case. "Effect" says what changes in our build.
+
+### ERC-8004 (`erc-8004/erc-8004-contracts@b9e466c`)
+
+- **I-1. A Validation Registry exists on Monad testnet.** See Q5. Effect: only a decision, since both options go through the adapter.
+- **I-2. `agentId` starts at 0.** `register()` does `agentId = $._lastId++` from 0. Effect: never use
+  `agentId == 0` as "unset". Check that an agent exists with `ownerOf`, which reverts with
+  `ERC721NonexistentToken`, inside `try/catch`.
+- **I-3. The shipped ABI is stale.** `abis/IdentityRegistry.json` lacks `isAuthorizedOrOwner(address,uint256)`,
+  but the source has it, the deployed testnet contract answers it, and Reputation depends on it. Effect: copy the
+  adapter interfaces from the `.sol` sources, not from `abis/`. (The spec says "copied from the ABIs".)
+- **I-4. "Operator" means ERC-721 approval, and `agentWallet` is not an operator.** ERC-8004 operator =
+  `isApprovedForAll(owner, x)` or `getApproved(agentId)`. The spec's `VeilGate._controls` = `ownerOf` or
+  `getAgentWallet`. So an approved operator can call `validationRequest` but cannot `bid`, and the agent
+  wallet can `bid` but cannot `validationRequest`. Also, `getAgentWallet` returns `address(0)` when unset,
+  and the wallet is cleared on every NFT transfer. Effect: keep the spec's `_controls` and document the asymmetry.
+- **I-5. `validationResponse` can be called repeatedly, and request hashes are unique per registry.**
+  `validationRequest` reverts with `"exists"` if the `requestHash` was used. `validationResponse` may be called many times
+  ("progressive validation"). Effect: make `mirrorToERC8004` idempotent, or allow repeat calls on purpose.
+  `requestId` already includes chain ID, registry address and a nonce, so it can't collide.
+- **I-6. The two `getSummary` functions differ.** Validation's `getSummary(agentId, validatorAddresses, tag)` takes an
+  optional validator list (empty means all); Reputation's requires a non-empty client list. Reputation's returns
+  `(uint64 count, int128 summaryValue, uint8 summaryValueDecimals)` and normalises to the most common
+  `valueDecimals`. Effect: none for `anchor` (always 2 decimals). Readers call
+  `getSummary(agentId, [AnonymousFeedback], "veil8004", "anon-aggregate")`.
+- **I-7. The registries can't be deployed with plain `new`.** They are UUPS implementations with `_disableInitializers()`,
+  and `initialize` is `reinitializer(2) onlyOwner`. A fresh Anvil deploy must go
+  `ERC1967Proxy(HardhatMinimalUUPS, initialize(identity))` → `upgradeToAndCall(impl, initialize(...))`.
+  Identity's `initialize()` takes no arguments; Reputation and Validation take `identityRegistry_`.
+  Effect: `Deploy.s.sol` follows this two-step pattern.
+- **I-8. OpenZeppelin version.** erc-8004-contracts locks OZ `5.4.0`, and `HardhatMinimalUUPS` calls
+  `__UUPSUpgradeable_init()`, which OZ 5.6.x removed. Effect: both OZ submodules are pinned to **v5.4.0**, which still meets the
+  spec's "OpenZeppelin 5.x".
+
+### Chainlink CRE
+
+- **C-1. `ReceiverTemplate` is not in any package.** It isn't in `@chainlink/contracts@1.5.0`
+  or in `chainlink-evm/contracts/cre/src/v1`. Chainlink copies it into each starter template. Effect: vendored unmodified
+  from `cre-templates@d0223f3` into `contracts/lib/chainlink-cre/` (see `VENDORED.md`, which has the sha256 of each file).
+- **C-2. Workflow-identity checks are setters, not constructor arguments.** The constructor takes only the forwarder
+  (as the spec says) and sets `Ownable(msg.sender)`. Identity checks are turned on afterwards with
+  `setExpectedWorkflowId(bytes32)`, `setExpectedAuthor(address)` and `setExpectedWorkflowName(string)`. The name check
+  reverts unless an author is also set, and names are truncated to 40 bits. The workflow ID only exists after
+  `cre workflow deploy`. Effect: the deploy runs in two steps (deploy consumer, deploy workflow, then call
+  `setExpectedWorkflowId` on the consumer). Locally, the MockForwarder supplies a fixed fake workflow ID per workflow.
+- **C-3. `onReport` metadata layout.** It is 64 bytes: `abi.encodePacked(bytes32 workflowId, bytes10 workflowName, address workflowOwner, bytes2 reportId)`.
+  `workflowName` is the ASCII bytes of the first 10 hex characters of `sha256(name)`. Effect: our MockForwarder must
+  build exactly this.
+- **C-4. The real forwarder does not bubble up receiver reverts.** `KeystoneForwarder` (and Chainlink's own
+  `MockKeystoneForwarder`) call `onReport` with a low-level call, record `success=false`, and emit
+  `ReportProcessed(receiver, executionId, reportId, false)`. Effect: on testnet, a rejected report is a *successful*
+  forwarder transaction with `result=false`. Our MockForwarder will bubble reverts so Foundry tests can assert
+  the specific custom error, and the demo and indexer read `ReportProcessed.result` on testnet.
+- **C-5. The forwarder checks ERC-165 first.** It calls `supportsInterface(IReceiver)` before routing. `ReceiverTemplate`
+  implements it. Effect: consumers must keep it if they override `supportsInterface`.
+- **C-6. Workflow runtime is QuickJS.** There is no `fetch`, no Node crypto and no `setTimeout`, and probably no `WebAssembly`. Effect: sealed-store reads go
+  through the `http-actions` capability (DON consensus over the response). The sealed-store bearer token is a
+  CRE secret but is visible to nodes in a standard workflow. For the libsodium question see Q9.
+- **C-7. Capability maturity.** `confidential-http`, `http-trigger`, `http-actions` and `consensus` are
+  `1.0.0-alpha`; `evm` and `cron-trigger` are `1.0.0`.
+
+### Semaphore V4 (`@semaphore-protocol/contracts@4.14.3`)
+
+- **S-1. `createGroup()` fixes `merkleTreeDuration = 1 hours`.** An old Merkle root stops verifying one hour after
+  it is replaced. A rater who builds a proof against a root that has since changed, and submits more than an hour later,
+  fails with `Semaphore__MerkleTreeRootIsExpired`. Effect: call the overload `createGroup(address(this), merkleTreeDuration)`
+  with a duration of at least `epochLength` plus the rating window. (The spec says `semaphore.createGroup()`.)
+- **S-2. Nullifiers are stored per group.** That is `groups[groupId].nullifiers`. One identity in two categories in the same
+  epoch would produce the same nullifier for the same `(agentId, epoch)` scope in two groups, and Semaphore accepts both.
+  Effect: none to the design, but it confirms the spec's `NullifierRegistry` check with context
+  `(agentId, epoch)` is load-bearing, not redundant. Keep it.
+- **S-3. Message and scope are hashed inside the contract** (`keccak256(abi.encodePacked(x)) >> 8`). `proof.scope` stays
+  the raw `uint256`, so the spec's raw equality check against `uint256(keccak256(abi.encode(agentId, epoch)))` is correct.
+- **S-4. `PoseidonT3` is an external library.** It has a `public` `hash`, used through `InternalLeanIMT`. Effect: deploy it and link
+  it (`forge script --libraries` or deploy-then-link). Forge tests auto-link.
+- **S-5. Proof generation fetches artifacts over the network.** `generateProof` downloads `.wasm` and `.zkey` per tree depth unless
+  you pass `snarkArtifacts`. Effect: for an offline `make demo`, pre-download the artifacts for the depths used and pass
+  their paths.
+- **S-6. The proof struct matches.** `SemaphoreProof { merkleTreeDepth, merkleTreeRoot, nullifier, message, scope, uint256[8] points }`
+  is as the spec assumes. `validateProof` reverts (it does not return false) on a reused nullifier, an invalid proof, an
+  unknown or expired root, or an empty group.
+
+### Tooling
+
+- **T-1.** Bun was not installed. Installed `bun@1.4.2` globally (`npm i -g bun@1.4.2`) because `@chainlink/cre-sdk` declares `engines.bun >=1.2.21`.
+- **T-2.** Foundry treats a remapping target ending in `.sol/` as a file. The remapping is `@zk-kit/=../node_modules/@zk-kit/`
+  instead of `@zk-kit/lean-imt.sol/=…`.
+- **T-3.** `forge init` created a nested git repo in `contracts/`. It was removed, and Solidity dependencies are submodules
+  of the top-level repo.
+
+---
+
+## Pinned versions
+
+| Dependency | Version | How pinned |
+|---|---|---|
+| Foundry (forge/anvil/cast) | 1.6.0-v1.7.0 (`f83bad9`) | local toolchain |
+| solc | 0.8.26 | `foundry.toml` |
+| forge-std | v1.17.0 (`f3dae6e`) | submodule + `foundry.lock` |
+| OpenZeppelin contracts | v5.4.0 | submodule + `foundry.lock` (see I-8) |
+| OpenZeppelin contracts-upgradeable | v5.4.0 | submodule + `foundry.lock` |
+| erc-8004-contracts | `b9e466c` (2026-08-15, no tags upstream) | submodule + `foundry.lock` |
+| Chainlink CRE ReceiverTemplate | cre-templates `d0223f3` | vendored, sha256 in `VENDORED.md` |
+| @semaphore-protocol/contracts | 4.14.3 (→ @zk-kit/lean-imt.sol 2.0.1, poseidon-solidity 0.0.5) | `bun.lock`, exact |
+| @semaphore-protocol/core | 4.14.3 | `bun.lock`, exact |
+| @chainlink/cre-sdk | 1.23.0 (→ cre-sdk-javy-plugin 1.7.0) | `bun.lock`, exact |
+| viem | 2.57.4 | `bun.lock`, exact |
+| @openzeppelin/merkle-tree | 1.0.8 | `bun.lock`, exact |
+| libsodium-wrappers | 0.8.4 | `bun.lock`, exact (see Q9) |
+| next / react / react-dom | 16.4.0 / 19.3.0 / 19.3.0 | `bun.lock`, exact |
+| typescript | 5.9.3 | `bun.lock`, exact (7.x skipped: Next.js tooling support unverified) |
+| Bun | 1.4.2 | `packageManager` in `package.json` |
+| CRE CLI | not installed | **OPEN** (Q1) |

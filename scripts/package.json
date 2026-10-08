@@ -1,0 +1,9 @@
+{
+  "name": "@veil8004/scripts",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@veil8004/sdk": "workspace:*",
+    "viem": "2.57.4"
+  }
+}

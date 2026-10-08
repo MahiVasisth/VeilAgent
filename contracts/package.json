@@ -1,0 +1,8 @@
+{
+  "name": "@veil8004/contracts",
+  "private": true,
+  "description": "Solidity npm dependencies, resolved by Foundry through remappings in foundry.toml.",
+  "dependencies": {
+    "@semaphore-protocol/contracts": "4.14.3"
+  }
+}

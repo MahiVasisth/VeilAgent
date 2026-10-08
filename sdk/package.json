@@ -1,0 +1,14 @@
+{
+  "name": "@veil8004/sdk",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@openzeppelin/merkle-tree": "1.0.8",
+    "@semaphore-protocol/core": "4.14.3",
+    "libsodium-wrappers": "0.8.4",
+    "viem": "2.57.4"
+  },
+  "devDependencies": {
+    "@types/libsodium-wrappers": "0.8.2"
+  }
+}

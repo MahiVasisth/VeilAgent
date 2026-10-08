@@ -1,0 +1,4 @@
+[install]
+# Hoisted so Foundry can remap Solidity packages from ../node_modules.
+linker = "hoisted"
+exact = true

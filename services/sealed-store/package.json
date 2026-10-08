@@ -1,0 +1,6 @@
+{
+  "name": "@veil8004/sealed-store",
+  "private": true,
+  "type": "module",
+  "description": "Ciphertext-only store for sealed payloads. Runs on Bun.serve; no runtime dependencies."
+}
