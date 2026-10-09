@@ -28,6 +28,7 @@ export default async function AuctionPage() {
       <nav>
         <a href="/indexer">Indexer view</a>
         <a href="/auction">Auction view</a>
+        <a href="/audit">Audit</a>
       </nav>
       <h1>Sealed-bid hiring</h1>
       <p className="lede">

@@ -70,3 +70,17 @@ td.sealed { color: var(--sealed); font-weight: 600; }
 /* Phase 3: auction view */
 [data-testid="task"] .sub { color: var(--muted); font-size: 0.85rem; margin: 0 0 12px; }
 [data-testid="task"] { margin-bottom: 16px; }
+
+/* Phase 4: audit view */
+.bundle-input { width: 100%; margin: 8px 0; padding: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
+button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+.card .sub { color: var(--muted); font-size: 0.85rem; margin: 8px 0 0; }
+.error-text { color: var(--leak); }
+[data-testid="audit-report"] { margin-top: 16px; }
+[data-testid="audit-report"] h3 { margin: 0 0 8px; font-size: 1rem; }
+.verified { border-color: var(--agent); }
+.checks { list-style: none; padding: 0; display: grid; gap: 4px; font-size: 0.9rem; overflow-wrap: anywhere; }
+.checks .ok strong { color: var(--agent); }
+.checks .bad strong { color: var(--leak); }
+tr.opened td { background: var(--leak-bg); }

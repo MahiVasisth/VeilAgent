@@ -1,6 +1,6 @@
 # Veil8004 threat model
 
-Status: Phase 3. This file holds the claims table from docs/SPEC.md and is updated whenever a
+Status: Phase 4. This file holds the claims table from docs/SPEC.md and is updated whenever a
 Phase 0 answer or a later decision (docs/phase0.md) changes what can be claimed. The README claims only what this
 table says.
 
@@ -70,6 +70,17 @@ award through the MockForwarder.
 | Which agents bid: not hidden | `BidPlaced(taskId, agentId, commitment)` and the transaction sender; the auction page lists them |
 | Bids hidden from CRE node operators: only with a Confidential Workflow | not demonstrated; the W3 CRE wiring compiles but has not been simulated (docs/phase0.md P3-11) |
 
+## What Phase 4 demonstrates (locally, 2026-10-09)
+
+`make phase4` runs on Anvil. W1 results come from the local runner (a **simulation** of the DON). Disclosure itself
+needs no DON: the auditor only reads the chain.
+
+| Row | Demonstrated by |
+|---|---|
+| Selective disclosure to an auditor: one request, when the requester chooses | `scripts/src/phase4.ts`: the auditor CLI verifies one bundle. A bundle with a different input, salt, agent, policy, chain or registry is rejected, and so is the disclosed opening pointed at each other request. A dictionary attack with the disclosed salt opens no other commitment. The audit sends no transaction. Unit tests in `sdk/src/disclosure.test.ts` |
+| Validation input hidden from chain observers (unchanged by disclosure) | the Phase 4 leak scan finds no input or salt on-chain, including the disclosed request's |
+| Forced disclosure by a third party: No | holds against chain observers and the auditor. The caveats are listed below |
+
 ## Adversaries, assets and residual risks
 
 To be completed in Phase 6. Recorded so far:
@@ -96,3 +107,13 @@ To be completed in Phase 6. Recorded so far:
   list is bounded by the number of attested agents. W3 reads it with one `getBids` call.
 - **Requester and agent are public.** `PrivateValidationRequested` and the transaction sender show who asked for which
   policy on which agent, and the result. Only the input is hidden.
+- **A disclosure bundle is transferable (Phase 4).** It proves knowledge of the opening, not who disclosed it. The
+  auditor, or anyone the bundle reaches, can verify the request and pass it on. Disclosure cannot be revoked. Designated-
+  verifier disclosure is future work.
+- **Who else can build a bundle (Phase 4).** Anyone who holds the input and salt: the requester, and in a standard
+  workflow the DON nodes that decrypt W1's payload (the node-operator row). With a Confidential Workflow, only the
+  requester. So "forced disclosure by a third party: No" holds against chain observers and auditors, and against node
+  operators only with a Confidential Workflow.
+- **The auditor must pin the registry (Phase 4).** A bundle names its own registry. Unless the auditor compares it with
+  the PrivateValidationRegistry it trusts, a look-alike contract could report any result. The auditor CLI and `/audit`
+  compare against the deployment file and reject a mismatch.

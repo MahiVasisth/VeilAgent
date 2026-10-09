@@ -3,6 +3,7 @@ export * from "./abi/veil";
 export * from "./bids";
 export * from "./commitments";
 export * from "./dataUri";
+export * from "./disclosure";
 export * from "./indexer/auctionView";
 export * from "./indexer/publicGraph";
 export * from "./merkle";

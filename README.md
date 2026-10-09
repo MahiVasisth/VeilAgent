@@ -3,10 +3,15 @@
 Private attestations for ERC-8004 agents on Monad testnet, with sealed-bid agent hiring as the
 flagship application and Chainlink CRE running the validator, the bid opener and the receipt issuer.
 
-**Status: Phase 3 (sealed-bid hiring).** Phase 3 adds `SealedBidHiring`, the second `VeilGate` consumer: only agents
+**Status: Phase 4 (selective disclosure).** The requester of one private validation can open it to an auditor with a
+disclosure bundle (`sdk/src/disclosure.ts`): the request's input and salt, plus where to find it. The auditor
+(`scripts/src/auditor.ts`, or the `/audit` page) recomputes the commitment and compares it, the agent, the policy, the
+result, the tier and the expiry with the chain. Nothing goes on-chain, and every other request stays sealed.
+
+Phase 3 (sealed-bid hiring) added `SealedBidHiring`, the second `VeilGate` consumer: only agents
 that hold `QUALIFIED_SCREENER_V1` can bid, bids are salted commitments, and the W3 bid-opener handler opens them
 off-chain and awards the lowest. Only the winner, the winning price and a Merkle root over the counted bids reach the
-chain. Also new: the bidder script and the auction view. As in Phase 2, the DON is **simulated** locally.
+chain. As in Phase 2, the DON is **simulated** locally.
 
 Phase 2 (private validation and gate), on top of the Phase 1 public baseline: `PolicyRegistry`,
 `PrivateValidationRegistry` (salted input commitments, results written back through a CRE forwarder), `VeilGate` and
@@ -94,6 +99,27 @@ winner's price is checked against its commitment on-chain. That the winner was t
 W3**; losers can only prove their bid was counted. Which agents bid, the winner and the winning price are public. The
 W3 CRE workflow is written and compiles to WASM, but has not been simulated or deployed, so hiding bids from node
 operators is designed, not demoed.
+
+### Phase 4: selective disclosure
+
+```bash
+make phase4          # clean Anvil -> deploy -> agents -> services + local runner (W1) -> exit checks -> audit page
+KEEP=1 make phase4   # same, but leave everything running: http://127.0.0.1:3000/audit
+```
+
+`scripts/src/phase4.ts` records four private validations (a pass, a fail, a client's pass and a pending one) and has the
+requester export a bundle for one. The auditor CLI verifies it with `eth_call` only. Bundles with a different input,
+salt, agent, policy, chain or registry are rejected, and so is the disclosed opening pointed at any other request. A
+dictionary attack using the disclosed salt and every real demo input opens none of the other commitments. The audit
+sends no transaction, and no input or salt reaches the chain, including the disclosed one. `make phase4` then checks
+the service logs and the `/audit` page and its `/audit/verify` endpoint.
+
+```bash
+bun scripts/src/auditor.ts bundle.json            # read-only; exit 0 = verified, 1 = not verified, 2 = malformed
+bun scripts/src/auditor.ts bundle.json --json     # machine-readable report
+```
+
+The bundle contains the salt. Anyone who holds it can verify the request and pass it on, so hand it only to the auditor.
 
 Everything runs locally on Anvil without a CRE account.
 
