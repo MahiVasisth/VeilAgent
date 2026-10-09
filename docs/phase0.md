@@ -18,7 +18,7 @@ Items marked OPEN must be closed before the phase that depends on them, not befo
 | Q4 | Confidential Workflows access | Unknown | **OPEN** (request) |
 | Q5 | ERC-8004 registries on Monad testnet | Identity and Reputation confirmed. A canonical Validation Registry **also exists** | Confirmed (chain); **OPEN** (decision) |
 | Q6 | ERC-8004 call rules | Confirmed, with three nuances | Confirmed (source) |
-| Q7 | Semaphore on Monad | No deployment; deploy our own | Confirmed (source + chain) |
+| Q7 | Semaphore on Monad | No deployment; deploy our own. Done (Phase 5): canonical PoseidonT3 via CREATE2 + our Semaphore | Confirmed (source + chain); deployed on Anvil |
 | Q8 | Monad testnet settings | Chain ID 10143, RPC `https://testnet-rpc.monad.xyz` | Confirmed (chain) |
 | H1–H5 | Hand checklist | — | **OPEN** |
 | Q9 | Does sealed-box decryption run inside a workflow? (from H2) | libsodium: probably not. Adopted pure-JS noble sealed boxes (Phase 2); W1 compiles to WASM | **OPEN** (simulate) |
@@ -141,6 +141,11 @@ canonical addresses it ships (`0x8A1fd199…693D`, `0x4DeC9E37…31f8`, `0xB4312
 code on Monad testnet. Plan as in the spec: deploy `SemaphoreVerifier`, `PoseidonT3` (an external
 library, so it must be linked) and `Semaphore` from `@semaphore-protocol/contracts@4.14.3`. All three
 compile under solc 0.8.26 with the remappings in `contracts/foundry.toml`.
+
+**Phase 5 (2026-10-09): deployed and checked on Anvil.** PoseidonT3 is not our own build but poseidon-solidity's
+published one, at its canonical address `0x3333333C…3B93` through the CREATE2 proxy `0x4e59…956C` (S-8). The proxy also
+exists on Monad testnet, but PoseidonT3 is not there yet, so the testnet deploy creates it at the same address.
+`scripts/src/semaphore-check.ts` checks a live deployment.
 
 **Fallback if deployment fails:** a minimal membership-proof contract, or an allowlist with nullifiers, labeled as a stand-in.
 
@@ -272,6 +277,29 @@ The installed source wins in each case. "Effect" says what changes in our build.
   is as the spec assumes. `validateProof` reverts (it does not return false) on a reused nullifier, an invalid proof, an
   unknown or expired root, or an empty group.
 
+- **S-7. `generateProof` hangs under Bun (Phase 5).** ffjavascript's multi-threaded curve setup never finishes
+  under Bun 1.4.2 (single-threaded: 33 ms), and fastfile's FileHandle is closed by GC with `ERR_INVALID_STATE`.
+  `@semaphore-protocol/proof`'s `generateProof` cannot pass snarkjs's `singleThread` option. Effect:
+  `sdk/src/semaphore.ts` `proveMembership` reproduces `generateProof` (same circuit inputs, same packing) and calls
+  `groth16.fullProve` with `{ singleThread: true }` and in-memory artifacts. `contracts/test/Semaphore.t.sol`
+  verifies its proofs at depths 1 to 4 against the real `SemaphoreVerifier`. A depth-1 proof takes about 0.4 s.
+- **S-8. PoseidonT3 does not fit under via-IR (Phase 5).** With this repo's settings (via-IR, 200 runs) PoseidonT3
+  compiles to 29,315 bytes, over EIP-170's 24,576, and `forge script` refuses to deploy it. A per-file
+  `compilation_restrictions` without via-IR spreads to everything that imports it, and Semaphore's verifier then fails
+  with "stack too deep". Forge's `libraries` setting is ignored for this `../node_modules` source. Effect:
+  `script/lib/SemaphoreDeployer.sol` deploys poseidon-solidity's published PoseidonT3 (23,478 bytes) at its canonical
+  address through the CREATE2 proxy, then links Semaphore's creation code to that address by hand (it replaces the
+  `__$…$__` placeholder) and deploys it. Tests use the same path. The payload is
+  `script/lib/PoseidonT3.create2.json`, which `sdk/src/semaphore.test.ts` checks against the npm package and the
+  CREATE2 address. Side effect: the canonical build is cheaper (6.30M vs 6.96M gas for the depth 1–4 roots test).
+- **S-9. Artifacts are fetched once and pinned (S-5 resolved).** `make artifacts` downloads the depth 1–4 `.wasm`/`.zkey`
+  (v4.13.0, the version `@semaphore-protocol/proof@4.14.3` asks for) into the git-ignored `.cache/snark-artifacts`.
+  SHA-256 hashes are pinned in `sdk/src/snarkArtifacts.ts`, on first download (trust on first use); each zkey is then
+  checked against the verifier by a real proof in `Semaphore.t.sol`. Proving needs no network after that.
+- **T-4. `Deploy.s.sol` writes the deployment file even when the broadcast fails.** `vm.writeJson` runs during
+  simulation, so a failed broadcast (as with the oversized PoseidonT3) leaves addresses with no code. Check for
+  `ONCHAIN EXECUTION COMPLETE & SUCCESSFUL` or for code at the addresses; `semaphore-check.ts` does the latter.
+
 ### Tooling
 
 - **T-1.** Bun was not installed. Installed `bun@1.4.2` globally (`npm i -g bun@1.4.2`) because `@chainlink/cre-sdk` declares `engines.bun >=1.2.21`.
@@ -383,6 +411,38 @@ Choices made where the spec is silent (none changes a claim):
   `cre workflow simulate` (no CLI, Q1).
 
 ---
+
+## Phase 5 decisions and differences from the spec (2026-10-09)
+
+- **P5-1. Rating window (differs from the spec).** The spec lets `anchor` run as soon as the epoch ends. A client
+  whose receipt landed late in the epoch could then be shut out by an early anchor. Added `ratingWindow` (constructor,
+  `RATING_WINDOW_SECONDS`, default 1 hour): `submit` for epoch E is accepted until
+  `ratingClosesAt(E) = (E + 1) * epochLength + ratingWindow`, and `anchor` only from then on. The aggregate is final
+  once anchoring is possible.
+- **P5-2. Group root duration (resolves S-1).** Every receipt group is created with
+  `createGroup(address(this), epochLength + ratingWindow)`. Roots are only replaced by receipts, which land inside the
+  epoch, so a root replaced at any point still verifies until ratings close. Tested with a real proof against a
+  replaced one-member root (`AnonymousFeedback.t.sol`).
+- **P5-3. A client's second job in the same group.** Semaphore reverts on a duplicate leaf, which would make that W2
+  report fail. The manager checks `hasMember` and skips the add, but still records the second job's agent. The client
+  can then rate both agents, once each, as with any member.
+- **P5-4. Group ids start at 0 in Semaphore.** The manager stores `groupId + 1`; `groupId(category, epoch)` reverts
+  `NoGroup` before the first receipt, and `hasGroup` is a view.
+- **P5-5. No receipt without an identity commitment (resolves P3-10).** A task posted with commitment 0 can be hired
+  and completed but gets no receipt (`NoIdentityCommitment`). A commitment outside the SNARK field makes Semaphore revert,
+  which blocks only that client's own receipt.
+- **P5-6. The receipt's epoch is when the W2 report lands**, not when the job was completed. A W2 report delayed across
+  an epoch boundary puts the receipt in the next epoch's group.
+- **P5-7. Interfaces.** `IVeilReceipts.sol` holds `IVeilReceipts` (the receipt manager) and `IVeilFeedback`
+  (AnonymousFeedback), with full NatSpec.
+- **P5-8. The anchored average rounds down.** `sum * 100 / count`, 2 decimals: scores 5, 5, 4 anchor as 466 (4.66).
+- **P5-9. NullifierRegistry contexts are shared by all consumers,** so only owner-allow-listed consumer contracts may
+  consume. Deploy.s.sol allow-lists AnonymousFeedback only.
+- **P5-10. What a receipt reveals.** `MemberAdded` (Semaphore) and `ReceiptIssued(taskId, category, epoch, groupId,
+  agentId)` tie the client's commitment to the task. That was already public at `postTask`. A rating reveals the agent,
+  epoch, category, score and nullifier; `AnonymousFeedback.t.sol` byte-scans a rating's calldata and logs and finds no
+  member's commitment or address. The rater is hidden among the group's members, so the anonymity set is the number of
+  clients with a receipt in that category and epoch.
 
 ## Pinned versions
 

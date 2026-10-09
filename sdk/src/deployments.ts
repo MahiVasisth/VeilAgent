@@ -28,6 +28,15 @@ export type VeilDeployment = {
   sealedBidHiring?: Address;
   /** Workflow id SealedBidHiring accepts reports from (W3); zero if unset. */
   w3WorkflowId?: `0x${string}`;
+  /** Phase 5: our own Semaphore V4 deployment. Absent in a Phase 3/4 deployment file. */
+  semaphoreVerifier?: Address;
+  semaphore?: Address;
+  /** Phase 5: receipts and anonymous feedback. */
+  nullifierRegistry?: Address;
+  receiptGroupManager?: Address;
+  anonymousFeedback?: Address;
+  /** Workflow id ReceiptGroupManager accepts reports from (W2); zero if unset. */
+  w2WorkflowId?: `0x${string}`;
 };
 
 /** Shape of contracts/deployments/<chainId>-agents.json, written by script/RegisterAgents.s.sol. */

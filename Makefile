@@ -2,10 +2,11 @@
 SHELL := /bin/bash
 CONTRACTS := contracts
 
-.PHONY: help install build abis test phase1 phase2 phase3 phase4 frontend demo deploy-testnet clean
+.PHONY: help install artifacts build abis test phase1 phase2 phase3 phase4 frontend demo deploy-testnet clean
 
 help:
 	@echo "make install         install submodules and JS workspaces"
+	@echo "make artifacts       fetch the Semaphore proving artifacts once (pinned hashes; proving is offline after)"
 	@echo "make build           compile contracts (and TypeScript once it exists)"
 	@echo "make test            forge tests + bun tests"
 	@echo "make phase1          Phase 1 exit check: clean Anvil, public ERC-8004 flow, indexer view (KEEP=1 to leave it running)"
@@ -19,6 +20,9 @@ help:
 install:
 	git submodule update --init --recursive
 	bun install
+
+artifacts:
+	bun scripts/src/fetch-artifacts.ts
 
 build:
 	cd $(CONTRACTS) && forge build

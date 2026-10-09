@@ -19,6 +19,7 @@ frontend/out/
 dist/
 **/.cre_build_tmp.js
 *.wasm
+.cache/
 
 # Logs and OS noise
 *.log
