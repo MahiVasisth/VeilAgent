@@ -1,8 +1,9 @@
 // Sealed store: holds ciphertext only, write-once, read with a workflow bearer token.
 //   PUT /v1/payload/:key   body = base64 sealed box (decoded size <= 4096 bytes). 201, or 409 if the key exists.
 //   GET /v1/payload/:key   Authorization: Bearer <token>. 200 + base64 body, 401/403, or 404.
-// Keys: a requestId (0x + 64 hex) for W1 validations, `taskId:agentId` (decimal) for W3 bids. Each token may read
-// one key kind only. Payloads and tokens are never logged.
+// Keys: a requestId (0x + 64 hex) for W1 validations; for W3 bids, `bid:<bidCommitment>` (Phase 3, uploaded before the
+// bid transaction so the key cannot be claimed first, docs/phase0.md P3-2) or the spec's `taskId:agentId` (decimal).
+// Each token may read one key kind only. Payloads and tokens are never logged.
 // Known limitation (docs/threat-model.md): PUT is unauthenticated, so anyone can claim a key first.
 
 export const MAX_SEALED_BYTES = 4096;
@@ -10,7 +11,7 @@ export const MAX_SEALED_BYTES = 4096;
 export type KeyKind = "validation" | "bid";
 const KEY_PATTERNS: Record<KeyKind, RegExp> = {
   validation: /^0x[0-9a-f]{64}$/,
-  bid: /^\d{1,78}:\d{1,78}$/,
+  bid: /^(\d{1,78}:\d{1,78}|bid:0x[0-9a-f]{64})$/,
 };
 
 export type StoreConfig = { tokens: Partial<Record<KeyKind, string>> };
@@ -31,7 +32,7 @@ export function createSealedStore(config: StoreConfig) {
     if (!match) return text(404, "not found");
     const key = decodeURIComponent(match[1]!).toLowerCase();
     const kind = kindOf(key);
-    if (!kind) return text(400, "bad key: expected a requestId (0x + 64 hex) or taskId:agentId");
+    if (!kind) return text(400, "bad key: expected a requestId (0x + 64 hex), bid:<commitment> or taskId:agentId");
 
     if (req.method === "PUT") {
       const body = (await req.text()).trim();

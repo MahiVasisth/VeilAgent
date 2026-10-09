@@ -3,7 +3,12 @@
 Private attestations for ERC-8004 agents on Monad testnet, with sealed-bid agent hiring as the
 flagship application and Chainlink CRE running the validator, the bid opener and the receipt issuer.
 
-**Status: Phase 2 (private validation and gate).** On top of the Phase 1 public baseline: `PolicyRegistry`,
+**Status: Phase 3 (sealed-bid hiring).** Phase 3 adds `SealedBidHiring`, the second `VeilGate` consumer: only agents
+that hold `QUALIFIED_SCREENER_V1` can bid, bids are salted commitments, and the W3 bid-opener handler opens them
+off-chain and awards the lowest. Only the winner, the winning price and a Merkle root over the counted bids reach the
+chain. Also new: the bidder script and the auction view. As in Phase 2, the DON is **simulated** locally.
+
+Phase 2 (private validation and gate), on top of the Phase 1 public baseline: `PolicyRegistry`,
 `PrivateValidationRegistry` (salted input commitments, results written back through a CRE forwarder), `VeilGate` and
 its first consumer `TreasuryAction`, the W1 validator handler, the sealed store, a **mock** screening API, a
 **MockForwarder**, and a **local runner that simulates the CRE DON**. The indexer page now shows the split view.
@@ -63,6 +68,32 @@ Simulated or mocked here, and labeled as such in logs and on the page:
 - **Mock screening API**: a fixed, fictional hit list.
 
 Secrets for a run (W1 key pair, store token, API key) are generated fresh by `scripts/phase2.sh` and never written to disk.
+
+### Phase 3: sealed-bid hiring
+
+```bash
+make phase3          # clean Anvil -> deploy -> agents -> services + local runner (W1 + W3) -> exit checks -> auction page
+KEEP=1 make phase3   # same, but leave everything running: http://127.0.0.1:3000/auction
+```
+
+`scripts/src/phase3.ts` registers a fourth agent that fails its qualification, posts a task, and has three agents
+pass `QUALIFIED_SCREENER_V1` through W1 (a **mock** `/qualify` endpoint with fictional credentials). The unqualified
+agent and a non-controller are rejected. The three bid (each sealed opening is uploaded under `bid:<commitment>` before
+the bid transaction). A duplicate bid, an early close and a late bid are rejected, anyone closes bidding, and the local
+runner's W3 awards the lowest. A replayed award is rejected, two losers verify Merkle inclusion from public data, and
+the client marks the job completed. It then leak-scans calldata, logs and the full Anvil state for the losing prices and
+salts. `make phase3` also checks the service logs and the auction page.
+
+```bash
+bun scripts/src/bidder.ts bid --task 1 --agent 0 --price 4217350000000000000000   # needs W3_PUBLIC_KEY, a running store
+bun scripts/src/bidder.ts inclusion --task 1 --agent 0                            # public data only
+```
+
+What this shows, as far as the [claims table](docs/threat-model.md) allows: losing bid prices stay off-chain, and the
+winner's price is checked against its commitment on-chain. That the winner was the lowest valid bid is **trusted to
+W3**; losers can only prove their bid was counted. Which agents bid, the winner and the winning price are public. The
+W3 CRE workflow is written and compiles to WASM, but has not been simulated or deployed, so hiding bids from node
+operators is designed, not demoed.
 
 Everything runs locally on Anvil without a CRE account.
 

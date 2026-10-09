@@ -1,0 +1,7 @@
+{
+  "chainSelectorName": "monad-testnet",
+  "isTestnet": true,
+  "sealedBidHiring": "0x0000000000000000000000000000000000000000",
+  "sealedStoreUrl": "https://sealed-store.example.invalid",
+  "gasLimit": "800000"
+}

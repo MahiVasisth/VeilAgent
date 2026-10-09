@@ -66,3 +66,7 @@ td.sealed { color: var(--sealed); font-weight: 600; }
 .sealed-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; font-size: 0.9rem; }
 .sealed-list li { background: var(--sealed-bg); border-left: 3px solid var(--sealed); padding: 6px 10px; border-radius: 4px; }
 .sim-banner { background: var(--sim-bg); border: 1px solid var(--sim-border); border-radius: 8px; padding: 8px 12px; margin: 0 0 16px; font-size: 0.9rem; }
+
+/* Phase 3: auction view */
+[data-testid="task"] .sub { color: var(--muted); font-size: 0.85rem; margin: 0 0 12px; }
+[data-testid="task"] { margin-bottom: 16px; }

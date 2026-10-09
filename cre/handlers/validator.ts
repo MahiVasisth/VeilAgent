@@ -2,8 +2,12 @@
 // simulation (cre/local-runner). No I/O here: callers fetch the sealed payload, call the screening API, and deliver
 // the report. Runs under QuickJS in CRE, so it uses only viem and the noble-based seal module.
 //
-//   prepareValidation(event, sealedPayload, decryptKey)  -> { subject } | stop      (decrypt + commitment check)
-//   finishValidation(prepared, screening, now, window)   -> report bytes            (decision + expiry + encoding)
+//   prepareValidation(event, sealedPayload, decryptKey)  -> { check, subject } | stop   (decrypt + commitment check)
+//   finishValidation(prepared, answer, now, window)      -> report bytes               (decision + expiry + encoding)
+//
+// Policies: SANCTIONS_SCREEN_V1 screens the input as a subject (POST /screen, pass when there is no hit).
+// QUALIFIED_SCREENER_V1 (Phase 3) treats the input as the agent's screener credential (POST /qualify, pass when the
+// provider lists it as qualified).
 import { decodeAbiParameters, decodeEventLog, encodeAbiParameters, type Hex } from "viem";
 import { inputCommitment, policyId } from "@veil8004/sdk/commitments";
 import { open } from "@veil8004/sdk/seal";
@@ -14,12 +18,24 @@ export const Tier = { PublicReputation: 0, Don: 1, TeeDon: 2, Zk: 3 } as const;
 export type TierValue = (typeof Tier)[keyof typeof Tier];
 
 /** Policies W1 knows how to evaluate. Anything else stops without a report. */
-export const W1_POLICIES = { SANCTIONS_SCREEN_V1: policyId("SANCTIONS_SCREEN_V1") } as const;
+export const W1_POLICIES = {
+  SANCTIONS_SCREEN_V1: policyId("SANCTIONS_SCREEN_V1"),
+  QUALIFIED_SCREENER_V1: policyId("QUALIFIED_SCREENER_V1"),
+} as const;
+
+/** Which provider call a policy needs. */
+export type Check = "screen" | "qualify";
+const CHECKS: Record<Hex, Check> = {
+  [W1_POLICIES.SANCTIONS_SCREEN_V1]: "screen",
+  [W1_POLICIES.QUALIFIED_SCREENER_V1]: "qualify",
+};
 
 export type ValidationRequest = { requestId: Hex; agentId: bigint; policyId: Hex; commitment: Hex };
 export type Stop = { stop: true; reason: string };
-export type Prepared = { stop: false; request: ValidationRequest; subject: string };
+/** `subject` is the opened input: the subject to screen, or the credential to qualify. */
+export type Prepared = { stop: false; request: ValidationRequest; check: Check; subject: string };
 export type ScreeningResult = { hit: boolean };
+export type QualificationResult = { qualified: boolean };
 export type ValidatorReport = {
   requestId: Hex;
   commitment: Hex;
@@ -51,7 +67,7 @@ export function decodeValidationRequested(log: { topics: Hex[]; data: Hex }): Va
 }
 
 const stop = (reason: string): Stop => ({ stop: true, reason });
-const isW1Policy = (id: Hex) => (Object.values(W1_POLICIES) as Hex[]).includes(id);
+const isW1Policy = (id: Hex) => id in CHECKS;
 
 /** Opens the sealed `{input, salt}` and recomputes the commitment. Stops (no report) on a missing or undecryptable
  *  payload, a malformed opening, a commitment mismatch, or a policy W1 does not evaluate. */
@@ -76,8 +92,7 @@ export function prepareValidation(
   const recomputed = inputCommitment({ agentId: request.agentId, policyId: request.policyId, input, salt: salt as Hex });
   if (recomputed.toLowerCase() !== request.commitment.toLowerCase()) return stop("commitment mismatch");
 
-  // SANCTIONS_SCREEN_V1: the input is the subject to screen.
-  return { stop: false, request, subject: input };
+  return { stop: false, request, check: CHECKS[request.policyId]!, subject: input };
 }
 
 /** Expiry for a result decided at `now`: inside (now, now + validityWindow], with a small margin so that clock skew
@@ -88,19 +103,28 @@ export function expiryFor(nowSeconds: bigint, validityWindow: bigint): bigint {
   return nowSeconds + validityWindow - margin;
 }
 
-/** Turns the screening answer into the W1 report. A hit fails the screen. */
+/** Turns the provider's answer into the W1 report. A screening hit fails; a qualified credential passes. */
 export function finishValidation(
   prepared: Prepared,
-  screening: ScreeningResult,
+  answer: ScreeningResult | QualificationResult,
   nowSeconds: bigint,
   validityWindow: bigint,
   tier: TierValue,
 ): { report: Hex; decoded: ValidatorReport } {
-  if (typeof screening?.hit !== "boolean") throw new Error("screening response must be {hit: boolean}");
+  let passed: boolean;
+  if (prepared.check === "screen") {
+    const hit = (answer as Partial<ScreeningResult>)?.hit;
+    if (typeof hit !== "boolean") throw new Error("screening response must be {hit: boolean}");
+    passed = !hit;
+  } else {
+    const qualified = (answer as Partial<QualificationResult>)?.qualified;
+    if (typeof qualified !== "boolean") throw new Error("qualification response must be {qualified: boolean}");
+    passed = qualified;
+  }
   const decoded: ValidatorReport = {
     requestId: prepared.request.requestId,
     commitment: prepared.request.commitment,
-    passed: !screening.hit,
+    passed,
     policyId: prepared.request.policyId,
     tier,
     expiry: expiryFor(nowSeconds, validityWindow),
@@ -122,6 +146,8 @@ export type ValidatorDeps = {
   fetchSealedPayload(requestId: Hex): Promise<string | null>;
   decryptKey: string;
   screen(subject: string): Promise<ScreeningResult>;
+  /** QUALIFIED_SCREENER_V1 only. */
+  qualify?(credential: string): Promise<QualificationResult>;
   validityWindow(policyId: Hex): Promise<bigint>;
   now(): Promise<bigint>;
   tier: TierValue;
@@ -135,7 +161,10 @@ export async function runValidator(
   if (!isW1Policy(request.policyId)) return stop("unsupported policy"); // no need to wait for a payload
   const prepared = prepareValidation(request, await deps.fetchSealedPayload(request.requestId), deps.decryptKey);
   if (prepared.stop) return prepared;
-  const screening = await deps.screen(prepared.subject);
+  let answer: ScreeningResult | QualificationResult;
+  if (prepared.check === "screen") answer = await deps.screen(prepared.subject);
+  else if (deps.qualify) answer = await deps.qualify(prepared.subject);
+  else throw new Error("QUALIFIED_SCREENER_V1 needs a qualify dependency");
   const window = await deps.validityWindow(request.policyId);
-  return { stop: false, ...finishValidation(prepared, screening, await deps.now(), window, deps.tier) };
+  return { stop: false, ...finishValidation(prepared, answer, await deps.now(), window, deps.tier) };
 }

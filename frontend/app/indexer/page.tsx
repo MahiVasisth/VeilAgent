@@ -40,6 +40,7 @@ export default async function IndexerPage() {
     <main>
       <nav>
         <a href="/indexer">Indexer view</a>
+        <a href="/auction">Auction view</a>
       </nav>
       <h1>What an indexer sees</h1>
       <p className="lede">

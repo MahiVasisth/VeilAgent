@@ -141,4 +141,65 @@ describe("W1 validator handler", () => {
     if (prepared.stop) throw new Error("unexpected stop");
     expect(() => finishValidation(prepared, { hit: "no" } as never, 1n, 10n, Tier.Don)).toThrow();
   });
+
+  describe("QUALIFIED_SCREENER_V1 (Phase 3)", () => {
+    const QUALIFIED = W1_POLICIES.QUALIFIED_SCREENER_V1;
+    function qFixture(credential = "QS-2026-0417", agentId = 5n) {
+      const salt = randomSalt();
+      const request: ValidationRequest = {
+        requestId: REQUEST_ID,
+        agentId,
+        policyId: QUALIFIED,
+        commitment: inputCommitment({ agentId, policyId: QUALIFIED, input: credential, salt }),
+      };
+      return { request, salt, sealed: sealFor(W1.publicKey, { input: credential, salt }) };
+    }
+
+    test("listed credential -> pass; the provider sees only the credential, via /qualify", async () => {
+      const { request, sealed } = qFixture();
+      const asked: string[] = [];
+      let screened = false;
+      const out = await runValidator(request, {
+        ...deps(sealed),
+        screen: async () => ((screened = true), { hit: true }),
+        qualify: async (c) => (asked.push(c), { qualified: true }),
+      });
+      if (out.stop) throw new Error(out.reason);
+      expect(out.decoded).toMatchObject({ passed: true, policyId: QUALIFIED, commitment: request.commitment });
+      expect(asked).toEqual(["QS-2026-0417"]);
+      expect(screened).toBe(false);
+    });
+
+    test("unlisted credential -> fail report", async () => {
+      const { request, sealed } = qFixture("QS-2025-0099");
+      const out = await runValidator(request, { ...deps(sealed), qualify: async () => ({ qualified: false }) });
+      if (out.stop) throw new Error(out.reason);
+      expect(out.decoded.passed).toBe(false);
+    });
+
+    test("tampered credential -> stop before the provider is called", async () => {
+      const { request, salt } = qFixture("QS-2025-0099");
+      let asked = false;
+      const out = await runValidator(request, {
+        ...deps(sealFor(W1.publicKey, { input: "QS-2026-0417", salt })),
+        qualify: async () => ((asked = true), { qualified: true }),
+      });
+      expect(out).toEqual({ stop: true, reason: "commitment mismatch" });
+      expect(asked).toBe(false);
+    });
+
+    test("prepare marks the check; malformed answers are rejected", () => {
+      const { request, sealed } = qFixture();
+      const prepared = prepareValidation(request, sealed, W1.secretKey);
+      if (prepared.stop) throw new Error(prepared.reason);
+      expect(prepared.check).toBe("qualify");
+      expect(() => finishValidation(prepared, { hit: false }, 1n, 10n, Tier.Don)).toThrow();
+      expect(() => finishValidation(prepared, { qualified: "yes" } as never, 1n, 10n, Tier.Don)).toThrow();
+    });
+
+    test("missing qualify dependency -> error, not a silent pass", async () => {
+      const { request, sealed } = qFixture();
+      await expect(runValidator(request, deps(sealed))).rejects.toThrow();
+    });
+  });
 });

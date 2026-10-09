@@ -65,4 +65,14 @@ describe("sealed-store", () => {
     await call("PUT", REQ.toUpperCase().replace("0X", "0x"), { body: box() });
     expect((await call("GET", REQ, { token: W1 })).status).toBe(200);
   });
+
+  test("bid keys by commitment (Phase 3): W3 token only, write-once", async () => {
+    const { call } = setup();
+    const key = `bid:0x${"cd".repeat(32)}`;
+    expect((await call("PUT", key, { body: box() })).status).toBe(201);
+    expect((await call("PUT", key, { body: box(80) })).status).toBe(409);
+    expect((await call("GET", key, { token: W1 })).status).toBe(403);
+    expect(await (await call("GET", key, { token: W3 })).text()).toBe(box());
+    expect((await call("PUT", "bid:0x1234", { body: box() })).status).toBe(400);
+  });
 });

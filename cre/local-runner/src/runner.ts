@@ -1,6 +1,7 @@
 // LOCAL DON SIMULATION. Stands in for the CRE Workflow DON on Anvil so the demo and end-to-end tests run without a CRE
-// account. It watches the same trigger event as the deployed workflow, runs the same pure handler
-// (cre/handlers/validator.ts), and delivers the report through the MockForwarder from one allow-listed key.
+// account. It watches the same trigger events as the deployed workflows, runs the same pure handlers
+// (cre/handlers/validator.ts for W1; cre/handlers/bidOpener.ts for W3, Phase 3), and delivers each report through the
+// MockForwarder from one allow-listed key.
 // What it does NOT simulate: DON consensus, report signatures, the enclave for Confidential HTTP (the screening API
 // key is read from env here), or Confidential Workflows. Results are reported at Tier.Don.
 import {
@@ -14,13 +15,16 @@ import {
   type Hex,
   type PublicClient,
 } from "viem";
-import { mockForwarderAbi, policyRegistryAbi, privateValidationRegistryAbi } from "@veil8004/sdk/abi/veil";
+import { mockForwarderAbi, policyRegistryAbi, privateValidationRegistryAbi, sealedBidHiringAbi } from "@veil8004/sdk/abi/veil";
 import { getPayload } from "@veil8004/sdk/sealed-store";
 import type { Deployment } from "@veil8004/sdk/deployments";
 import { decodeValidationRequested, runValidator, Tier, type ValidationRequest } from "../../handlers/validator";
+import { decodeBiddingClosed, runBidOpener, type BiddingClosed } from "../../handlers/bidOpener";
 
 export const W1_WORKFLOW_NAME = "veil8004-w1-validator";
+export const W3_WORKFLOW_NAME = "veil8004-w3-bid-opener";
 const STATUS_PENDING = 1;
+const TASK_CLOSED = 2;
 
 export type RunnerConfig = {
   rpcUrl: string;
@@ -35,6 +39,8 @@ export type RunnerConfig = {
   sealedStoreToken: string;
   screeningUrl: string;
   screeningApiKey: string;
+  /** W3 (Phase 3). Without it, BiddingClosed is ignored. */
+  w3?: { decryptKey: string; sealedStoreToken: string };
   /** How long to wait for the client's sealed upload after the request event. */
   payloadWaitMs?: number;
   pollMs?: number;
@@ -44,6 +50,10 @@ export type RunnerConfig = {
 export type Outcome =
   | { requestId: Hex; delivered: true; passed: boolean; txHash: Hex }
   | { requestId: Hex; delivered: false; reason: string };
+
+export type AwardOutcome =
+  | { taskId: bigint; delivered: true; winnerAgentId: bigint; validBidCount: number; dropped: number; txHash: Hex }
+  | { taskId: bigint; delivered: false; reason: string };
 
 export function createLocalRunner(cfg: RunnerConfig) {
   const maybeVeil = cfg.deployment.veil;
@@ -66,14 +76,16 @@ export function createLocalRunner(cfg: RunnerConfig) {
   };
 
   // The workflow name CRE would put in metadata (first 10 hex chars of sha256(name), as ASCII).
-  let workflowName: Hex | undefined;
-  const nameBytes = async () =>
-    (workflowName ??= await publicClient.readContract({
-      address: veil.forwarder,
-      abi: mockForwarderAbi,
-      functionName: "workflowNameOf",
-      args: [W1_WORKFLOW_NAME],
-    }));
+  const workflowNames = new Map<string, Hex>();
+  const nameBytesOf = async (name: string) => {
+    let bytes = workflowNames.get(name);
+    if (!bytes) {
+      bytes = await publicClient.readContract({ address: veil.forwarder, abi: mockForwarderAbi, functionName: "workflowNameOf", args: [name] });
+      workflowNames.set(name, bytes);
+    }
+    return bytes;
+  };
+  const nameBytes = () => nameBytesOf(W1_WORKFLOW_NAME);
 
   /** Polls the sealed store until the client's upload appears or the wait runs out. */
   async function fetchSealedPayload(requestId: Hex): Promise<string | null> {
@@ -86,15 +98,17 @@ export function createLocalRunner(cfg: RunnerConfig) {
   }
 
   /** Stands in for Confidential HTTP: same request shape, but the API key comes from env, not an enclave. */
-  async function screen(subject: string) {
-    const res = await fetch(`${cfg.screeningUrl}/screen`, {
+  async function callProvider<T>(path: "/screen" | "/qualify", body: Record<string, string>): Promise<T> {
+    const res = await fetch(`${cfg.screeningUrl}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": cfg.screeningApiKey },
-      body: JSON.stringify({ subject }),
+      body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`screening API ${res.status}`);
-    return (await res.json()) as { hit: boolean };
+    if (!res.ok) throw new Error(`screening API ${path} ${res.status}`);
+    return (await res.json()) as T;
   }
+  const screen = (subject: string) => callProvider<{ hit: boolean }>("/screen", { subject });
+  const qualify = (credential: string) => callProvider<{ qualified: boolean }>("/qualify", { credential });
 
   async function process(request: ValidationRequest): Promise<Outcome> {
     const { requestId } = request;
@@ -102,6 +116,7 @@ export function createLocalRunner(cfg: RunnerConfig) {
       fetchSealedPayload,
       decryptKey: cfg.w1DecryptKey,
       screen,
+      qualify,
       validityWindow: async (policyId) =>
         (await publicClient.readContract({ address: veil.policyRegistry, abi: policyRegistryAbi, functionName: "getPolicy", args: [policyId] }))
           .validityWindow,
@@ -154,21 +169,94 @@ export function createLocalRunner(cfg: RunnerConfig) {
     );
   }
 
+  // ---- W3 bid opener (Phase 3) ---------------------------------------------------------------
+  const hiring = veil.sealedBidHiring;
+  const w3 = cfg.w3;
+  const seenTasks = new Set<bigint>();
+
+  /** Runs W3 for one BiddingClosed event. Logs only what the report makes public (winner, winning price, count)
+   *  plus how many bids were dropped and why; never a counted losing price. */
+  async function processClosed(event: BiddingClosed): Promise<AwardOutcome> {
+    if (!hiring || !w3 || !veil.w3WorkflowId) throw new Error("W3 is not configured");
+    const { taskId } = event;
+    const result = await runBidOpener(event, {
+      readBids: async (id) =>
+        (await publicClient.readContract({ address: hiring, abi: sealedBidHiringAbi, functionName: "getBids", args: [id] })).map((b) => ({
+          agentId: b.agentId,
+          commitment: b.commitment,
+        })),
+      // Sealed bids are uploaded before the bid transaction (docs/phase0.md P3-2), so there is nothing to wait for.
+      fetchSealedBid: (key) => getPayload(cfg.sealedStoreUrl, key, w3.sealedStoreToken),
+      decryptKey: w3.decryptKey,
+    });
+    for (const d of result.dropped) log(`task ${taskId}: dropped the bid of agent #${d.agentId} (${d.reason})`);
+    const { decoded } = result;
+
+    return serialised(async () => {
+      const task = await publicClient.readContract({ address: hiring, abi: sealedBidHiringAbi, functionName: "getTask", args: [taskId] });
+      if (task.status !== TASK_CLOSED) {
+        log(`task ${taskId}: not Closed, skipping`);
+        return { taskId, delivered: false as const, reason: "not closed" };
+      }
+      const txHash = await wallet.writeContract({
+        address: veil.forwarder,
+        abi: mockForwarderAbi,
+        functionName: "deliver",
+        args: [hiring, veil.w3WorkflowId!, await nameBytesOf(W3_WORKFLOW_NAME), cfg.workflowOwner, "0x0003", result.report],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status !== "success") throw new Error(`award delivery reverted: ${txHash}`);
+      log(
+        decoded.validBidCount === 0
+          ? `task ${taskId}: no valid bid, NoAward delivered tx ${txHash}`
+          : `task ${taskId}: award delivered (agent #${decoded.winnerAgentId} at ${decoded.winningPrice}, ${decoded.validBidCount} counted, ${result.dropped.length} dropped) tx ${txHash}`,
+      );
+      return {
+        taskId,
+        delivered: true as const,
+        winnerAgentId: decoded.winnerAgentId,
+        validBidCount: decoded.validBidCount,
+        dropped: result.dropped.length,
+        txHash,
+      };
+    });
+  }
+
+  /** Processes every not-yet-seen BiddingClosed log in [fromBlock, toBlock]. */
+  async function processBidRange(fromBlock: bigint, toBlock: bigint): Promise<AwardOutcome[]> {
+    if (!hiring || !w3) return [];
+    const logs = await publicClient.getLogs({ address: hiring, fromBlock, toBlock });
+    const events = parseEventLogs({ abi: sealedBidHiringAbi, eventName: "BiddingClosed", logs });
+    const fresh = events.filter((e) => !seenTasks.has(e.args.taskId));
+    for (const e of fresh) seenTasks.add(e.args.taskId);
+    return Promise.all(
+      fresh.map((e) =>
+        processClosed(decodeBiddingClosed({ topics: e.topics as Hex[], data: e.data })).catch((err: unknown) => {
+          const reason = err instanceof Error ? err.message.split("\n")[0]! : String(err);
+          log(`task ${e.args.taskId}: error (${reason})`);
+          return { taskId: e.args.taskId, delivered: false as const, reason };
+        }),
+      ),
+    );
+  }
+
   /** Follows the chain from `fromBlock` until `signal` aborts. */
   async function watch(fromBlock: bigint, signal?: AbortSignal): Promise<void> {
     let next = fromBlock;
     log(`watching ${registry} for PrivateValidationRequested from block ${next}`);
+    if (hiring && w3) log(`watching ${hiring} for BiddingClosed from block ${next}`);
     while (!signal?.aborted) {
       const head = await publicClient.getBlockNumber();
       if (head >= next) {
         void processRange(next, head);
+        void processBidRange(next, head);
         next = head + 1n;
       }
       await sleep(cfg.pollMs ?? 300);
     }
   }
 
-  return { process, processRange, watch };
+  return { process, processRange, processClosed, processBidRange, watch };
 }
 
 const short = (h: string) => `${h.slice(0, 10)}…`;

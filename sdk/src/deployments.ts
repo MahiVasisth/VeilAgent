@@ -24,6 +24,10 @@ export type VeilDeployment = {
   treasuryOperator: Address;
   /** Workflow id the registry accepts reports from (`setExpectedWorkflowId`); zero if unset. */
   w1WorkflowId: `0x${string}`;
+  /** Phase 3. Absent in a Phase 2-only deployment file. */
+  sealedBidHiring?: Address;
+  /** Workflow id SealedBidHiring accepts reports from (W3); zero if unset. */
+  w3WorkflowId?: `0x${string}`;
 };
 
 /** Shape of contracts/deployments/<chainId>-agents.json, written by script/RegisterAgents.s.sol. */

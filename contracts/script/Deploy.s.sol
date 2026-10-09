@@ -9,6 +9,7 @@ import {IERC8004Validation} from "../src/interfaces/erc8004/IERC8004Validation.s
 import {PolicyRegistry} from "../src/core/PolicyRegistry.sol";
 import {PrivateValidationRegistry} from "../src/core/PrivateValidationRegistry.sol";
 import {TreasuryAction} from "../src/consumers/TreasuryAction.sol";
+import {SealedBidHiring} from "../src/consumers/SealedBidHiring.sol";
 import {MockForwarder} from "../src/mocks/MockForwarder.sol";
 
 /// @notice Deploys the Veil8004 stack and writes `deployments/<chainId>.json`.
@@ -22,10 +23,13 @@ import {MockForwarder} from "../src/mocks/MockForwarder.sol";
 ///         - Elsewhere: CRE_FORWARDER_ADDRESS is required; W1_WORKFLOW_ID is pinned if set (it only exists after
 ///           `cre workflow deploy`, docs/phase0.md C-2), otherwise set it later with setExpectedWorkflowId.
 ///         Treasury operator: TREASURY_OPERATOR (default Anvil account 7 on Anvil).
+///         Phase 3: QUALIFIED_SCREENER_V1 policy and SealedBidHiring, pinned to W3 like the registry is to W1
+///         (fixed local id on Anvil, W3_WORKFLOW_ID elsewhere).
 /// Usage: forge script script/Deploy.s.sol --rpc-url anvil --broadcast --private-key $DEPLOYER_PRIVATE_KEY
 contract Deploy is Script {
     string internal constant ANVIL_MNEMONIC = "test test test test test test test test test test test junk";
     bytes32 internal constant LOCAL_W1_WORKFLOW_ID = keccak256("veil8004.local.w1-validator");
+    bytes32 internal constant LOCAL_W3_WORKFLOW_ID = keccak256("veil8004.local.w3-bid-opener");
 
     struct Veil {
         address forwarder;
@@ -35,6 +39,8 @@ contract Deploy is Script {
         address treasuryAction;
         address treasuryOperator;
         bytes32 w1WorkflowId;
+        address sealedBidHiring;
+        bytes32 w3WorkflowId;
     }
 
     function run() external {
@@ -65,6 +71,8 @@ contract Deploy is Script {
         vm.serializeAddress(v, "privateValidationRegistry", veil.privateValidationRegistry);
         vm.serializeAddress(v, "treasuryAction", veil.treasuryAction);
         vm.serializeAddress(v, "treasuryOperator", veil.treasuryOperator);
+        vm.serializeAddress(v, "sealedBidHiring", veil.sealedBidHiring);
+        vm.serializeBytes32(v, "w3WorkflowId", veil.w3WorkflowId);
         string memory veilJson = vm.serializeBytes32(v, "w1WorkflowId", veil.w1WorkflowId);
 
         string memory key = "deployment";
@@ -84,6 +92,7 @@ contract Deploy is Script {
         console2.log("PolicyRegistry           ", veil.policyRegistry);
         console2.log("PrivateValidationRegistry", veil.privateValidationRegistry);
         console2.log("TreasuryAction           ", veil.treasuryAction);
+        console2.log("SealedBidHiring          ", veil.sealedBidHiring);
         console2.log("written to", path);
     }
 
@@ -94,10 +103,13 @@ contract Deploy is Script {
             veil.forwarder = address(mock);
             veil.forwarderIsMock = true;
             veil.w1WorkflowId = LOCAL_W1_WORKFLOW_ID;
+            veil.w3WorkflowId = LOCAL_W3_WORKFLOW_ID;
         } else {
             veil.forwarder = vm.envAddress("CRE_FORWARDER_ADDRESS");
             string memory wid = vm.envOr("W1_WORKFLOW_ID", string(""));
             if (bytes(wid).length != 0) veil.w1WorkflowId = vm.parseBytes32(wid);
+            string memory w3 = vm.envOr("W3_WORKFLOW_ID", string(""));
+            if (bytes(w3).length != 0) veil.w3WorkflowId = vm.parseBytes32(w3);
         }
 
         PolicyRegistry policies = new PolicyRegistry();
@@ -117,6 +129,19 @@ contract Deploy is Script {
         veil.treasuryOperator = anvil ? _anvilOr("TREASURY_OPERATOR", 7) : vm.envAddress("TREASURY_OPERATOR");
         TreasuryAction treasury = new TreasuryAction(registry, IERC8004Identity(identity), veil.treasuryOperator);
 
+        policies.createPolicy(
+            keccak256("QUALIFIED_SCREENER_V1"),
+            keccak256("QUALIFIED_SCREENER_V1: agent holds a screener credential on the provider's qualified list"),
+            IAssuranceTier.Tier.Don,
+            uint64(vm.envOr("POLICY_VALIDITY_SECONDS", uint256(3600))),
+            0
+        );
+        SealedBidHiring hiring =
+            new SealedBidHiring(veil.forwarder, registry, IERC8004Identity(identity), policies);
+        if (veil.w3WorkflowId != bytes32(0)) hiring.setExpectedWorkflowId(veil.w3WorkflowId);
+        else console2.log("WARNING: W3_WORKFLOW_ID unset; call setExpectedWorkflowId after `cre workflow deploy`");
+
+        veil.sealedBidHiring = address(hiring);
         veil.policyRegistry = address(policies);
         veil.privateValidationRegistry = address(registry);
         veil.treasuryAction = address(treasury);

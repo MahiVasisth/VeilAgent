@@ -1,6 +1,6 @@
 // Writes the TypeScript ABIs from Foundry artifacts, so they can never drift from the contracts we deploy:
 //   sdk/src/abi/erc8004.ts  installed ERC-8004 sources (the repo's own abis/ folder is stale: docs/phase0.md I-3)
-//   sdk/src/abi/veil.ts     Veil8004 contracts (Phase 2+)
+//   sdk/src/abi/veil.ts     Veil8004 contracts (Phase 2+; SealedBidHiring from Phase 3)
 // Run after `forge build`: bun scripts/src/gen-abis.ts
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,6 +22,7 @@ const groups = {
       policyRegistryAbi: "PolicyRegistry",
       privateValidationRegistryAbi: "PrivateValidationRegistry",
       treasuryActionAbi: "TreasuryAction",
+      sealedBidHiringAbi: "SealedBidHiring",
       mockForwarderAbi: "MockForwarder",
     },
   },

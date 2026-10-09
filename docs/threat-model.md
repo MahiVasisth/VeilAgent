@@ -1,6 +1,6 @@
 # Veil8004 threat model
 
-Status: Phase 2. This file holds the claims table from docs/SPEC.md and is updated whenever a
+Status: Phase 3. This file holds the claims table from docs/SPEC.md and is updated whenever a
 Phase 0 answer or a later decision (docs/phase0.md) changes what can be claimed. The README claims only what this
 table says.
 
@@ -56,6 +56,20 @@ enclave; the screening API key comes from env instead of Confidential HTTP).
 Not demonstrated in Phase 2: Confidential HTTP (the W1 CRE wiring is written and compiles, but has not been simulated or
 deployed, docs/phase0.md Q1/C-8), and anything that needs a Confidential Workflow.
 
+## What Phase 3 demonstrates (locally, 2026-10-09)
+
+`make phase3` runs on Anvil with the local runner (a **simulation** of the DON) delivering W1 qualifications and the W3
+award through the MockForwarder.
+
+| Row | Demonstrated by |
+|---|---|
+| Losing bid prices hidden from chain observers | `contracts/test/Leak.t.sol` (`BidLeakTest`) records a whole auction and byte-scans calldata, storage writes and logs for the losing prices (as words and as decimal strings) and salts; `scripts/src/phase3.ts` scans Phase 3 calldata and logs plus the full Anvil state; `scripts/phase3.sh` checks the service logs and the auction page |
+| Winner's bid matches its commitment | `_processReport` reverts `WinnerCommitmentMismatch` unless the reported price and salt open the winner's stored commitment (`SealedBidHiring.t.sol`) |
+| The winner was the lowest valid bid: trusted to W3 | the handler picks the lowest valid price (tests in `cre/handlers/bidOpener.test.ts`); on-chain, a loser can only check that its bid was counted (`verifyInclusion`) |
+| Winner and winning price: not hidden | `JobAwarded` carries both, and the report carries the winner's salt |
+| Which agents bid: not hidden | `BidPlaced(taskId, agentId, commitment)` and the transaction sender; the auction page lists them |
+| Bids hidden from CRE node operators: only with a Confidential Workflow | not demonstrated; the W3 CRE wiring compiles but has not been simulated (docs/phase0.md P3-11) |
+
 ## Adversaries, assets and residual risks
 
 To be completed in Phase 6. Recorded so far:
@@ -68,5 +82,17 @@ To be completed in Phase 6. Recorded so far:
 - **Who can move an agent's attestation (P2-1).** Only requests by the agent's owner, an ERC-721 operator or its
   verified wallet update `latestRequest`. Third-party requests get a per-request result only.
 - **Payload race (P2-12).** A payload uploaded after W1 has fetched leaves the request Pending.
+- **Sealed-bid squatting (Phase 3, P3-2): mitigated by design.** Bids are stored under `bid:<commitment>` and uploaded
+  before `bid()`, so nobody can claim a bidder's key first. A bidder who never uploads, or uploads a mismatched opening,
+  is dropped. That is the only way to stay out of an auction, and it cannot stall the auction.
+- **W3 decides who won (Phase 3).** A W3 that misbehaves (or the DON behind it) could drop a valid bid or pick a higher
+  one. The chain only checks that the winner's opening matches its commitment. A loser who finds its bid "not counted"
+  can show this publicly, but can prove its bid was valid and lower only by revealing its own price and salt. This is the
+  "Trusted to W3" row.
+- **What an auction leaks (Phase 3).** The task's client, policy, category and deadline; each bidder's agent, address
+  and bid time; the winner, the winning price and how many bids were counted. From public data, which bids were dropped
+  (P3-9). Losing prices are low-entropy, but each bid has a 32-byte salt, so the commitment cannot be brute-forced.
+- **Bid-list growth (Phase 3).** One bid per agent per task, and only from agents that hold the policy, so a task's bid
+  list is bounded by the number of attested agents. W3 reads it with one `getBids` call.
 - **Requester and agent are public.** `PrivateValidationRequested` and the transaction sender show who asked for which
   policy on which agent, and the result. Only the input is hidden.

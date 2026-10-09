@@ -74,13 +74,16 @@ const onRequested = (runtime: Runtime<Config>, log: EVMLog): string => {
 
   // Confidential HTTP: the API key is injected inside the enclave from the vault and never enters handler code.
   // The template syntax below follows the CRE docs; confirm it with `cre workflow simulate` (docs/phase0.md).
+  // SANCTIONS_SCREEN_V1 -> POST /screen {subject}; QUALIFIED_SCREENER_V1 -> POST /qualify {credential} (Phase 3).
+  const [path, body] =
+    prepared.check === "screen" ? ["/screen", { subject: prepared.subject }] : ["/qualify", { credential: prepared.subject }];
   const screeningRes = new cre.capabilities.ConfidentialHTTPClient()
     .sendRequest(runtime, {
       vaultDonSecrets: [{ key: "SCREENING_API_KEY" }],
       request: {
-        url: `${config.screeningUrl}/screen`,
+        url: `${config.screeningUrl}${path}`,
         method: "POST",
-        bodyString: JSON.stringify({ subject: prepared.subject }),
+        bodyString: JSON.stringify(body),
         multiHeaders: {
           "content-type": { values: ["application/json"] },
           "x-api-key": { values: ["{{.SCREENING_API_KEY}}"] },
@@ -89,7 +92,7 @@ const onRequested = (runtime: Runtime<Config>, log: EVMLog): string => {
     })
     .result();
   if (!ok(screeningRes)) throw new Error(`screening API ${screeningRes.statusCode}`);
-  const screening = JSON.parse(text(screeningRes)) as { hit: boolean };
+  const screening = JSON.parse(text(screeningRes)) as { hit: boolean } | { qualified: boolean };
 
   const evm = evmClient(config);
   const call = evm

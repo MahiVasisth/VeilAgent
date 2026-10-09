@@ -1,0 +1,64 @@
+{
+  "_comment": "Bid commitments and StandardMerkleTree leaves generated with Foundry cast (cast abi-encode / cast keccak), independent of both implementations. The tree (root and proofs) was generated with @openzeppelin/merkle-tree 1.0.8; its leaf for agent 0 equals the cast-computed leaf of vector 0. Checked by test/SealedBidHiring.t.sol and sdk/src/bids.test.ts.",
+  "vectors": [
+    {
+      "taskId": "1",
+      "agentId": "0",
+      "price": "3100",
+      "salt": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "commitment": "0x1bb4cc1a8805954438a836244d941327f922491652d2946d096f566f7d6e03b9",
+      "leaf": "0xcf921be8520c192117253ea88f65b9f13c8d030498ab4cf95ac90011315af743"
+    },
+    {
+      "taskId": "7",
+      "agentId": "2",
+      "price": "4217350000000000000",
+      "salt": "0xabababababababababababababababababababababababababababababababcd",
+      "commitment": "0xb1b3cbb607885337b59efe701e13ebaa517ad1f87cc6ba23002c0dfa6315eb8c",
+      "leaf": "0xb3ade6c28b373645475081ef2be7dee677cd5d6ee3ac5a526759d42d1f85d94b"
+    },
+    {
+      "taskId": "12345678901234567890",
+      "agentId": "99",
+      "price": "0",
+      "salt": "0x0000000000000000000000000000000000000000000000000000000000000001",
+      "commitment": "0x1673760a2bafcc66ccb872589697853e81cca35224e1c9bb19f21a804ab6473b",
+      "leaf": "0xc4710a2e9cf63dc12f84e3d6a6785361a1336b17e88bbb22d9dac7d7a6094625"
+    },
+    {
+      "taskId": "3",
+      "agentId": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "price": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "salt": "0xfefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefe",
+      "commitment": "0xf5c2acfe222e374f69b3aadcf81c8bcb42117a0c5bded21c2fb20d4f197bb8aa",
+      "leaf": "0xf5562d6f69eb791f93813be8a6e92138084f31d4e512f30c63154045ba9bf5df"
+    }
+  ],
+  "tree": {
+    "taskId": "1",
+    "root": "0x0368d876d8803eadf8465a0cd1a669887e89b3cf4d3b511e2f4b032b5aa53aae",
+    "leaves": [
+      {
+        "agentId": "0",
+        "commitment": "0x1bb4cc1a8805954438a836244d941327f922491652d2946d096f566f7d6e03b9",
+        "proof": ["0x71437ecf117c1200eeae2c2d300e2400c90fdb9a3d785ff27e67d83a1e2f0563"]
+      },
+      {
+        "agentId": "1",
+        "commitment": "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "proof": [
+          "0xb77eb56f47090f19dd7fc7a84321a5cabf56367609e7727881fed380038ec432",
+          "0xcf921be8520c192117253ea88f65b9f13c8d030498ab4cf95ac90011315af743"
+        ]
+      },
+      {
+        "agentId": "2",
+        "commitment": "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "proof": [
+          "0x6b5ded31386d8478ceb1bbc390a443ac6b5ec6f65075cdb8b531ee5d3cdc963d",
+          "0xcf921be8520c192117253ea88f65b9f13c8d030498ab4cf95ac90011315af743"
+        ]
+      }
+    ]
+  }
+}

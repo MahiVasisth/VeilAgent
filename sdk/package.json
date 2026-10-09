@@ -21,6 +21,8 @@
     "./seal": "./src/seal.ts",
     "./sealed-store": "./src/sealedStore.ts",
     "./abi/veil": "./src/abi/veil.ts",
-    "./abi/erc8004": "./src/abi/erc8004.ts"
+    "./abi/erc8004": "./src/abi/erc8004.ts",
+    "./bids": "./src/bids.ts",
+    "./merkle": "./src/merkle.ts"
   }
 }

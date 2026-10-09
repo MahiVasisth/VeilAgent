@@ -1,6 +1,7 @@
 // LOCAL DON SIMULATION entry point. Run: bun cre/local-runner/src/main.ts
 // Env: ANVIL_RPC_URL, W1_DECRYPT_KEY, SEALED_STORE_URL, SEALED_STORE_W1_TOKEN, MOCK_SCREENING_URL, SCREENING_API_KEY,
 //      LOCAL_DON_PRIVATE_KEY (default: Anvil account 8, which Deploy.s.sol allow-lists on the MockForwarder).
+//      Phase 3 (W3, optional): W3_DECRYPT_KEY and SEALED_STORE_W3_TOKEN. Without both, BiddingClosed is ignored.
 import { join } from "node:path";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { anvil } from "viem/chains";
@@ -29,6 +30,10 @@ const runner = createLocalRunner({
   sealedStoreToken: need("SEALED_STORE_W1_TOKEN"),
   screeningUrl: process.env.MOCK_SCREENING_URL ?? "http://127.0.0.1:8788",
   screeningApiKey: need("SCREENING_API_KEY"),
+  w3:
+    process.env.W3_DECRYPT_KEY && process.env.SEALED_STORE_W3_TOKEN
+      ? { decryptKey: process.env.W3_DECRYPT_KEY, sealedStoreToken: process.env.SEALED_STORE_W3_TOKEN }
+      : undefined,
 });
 
 console.log("[SIMULATED DON] local runner: a stand-in for the CRE Workflow DON (no consensus, no signatures, no enclave)");

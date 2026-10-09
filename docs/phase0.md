@@ -12,7 +12,7 @@ Items marked OPEN must be closed before the phase that depends on them, not befo
 
 | # | Question | Answer | Status |
 |---|---|---|---|
-| Q1 | Can CRE write to Monad testnet? | SDK: yes. Account and forwarder: unconfirmed | **OPEN** (account) |
+| Q1 | Can CRE write to Monad testnet? | Yes: SDK, account (2026-10-09) and forwarder confirmed | Confirmed (CLI + chain) |
 | Q2 | Can a workflow trigger at a deadline? | Yes, through the EVM Log trigger on `BiddingClosed` | Confirmed (source) |
 | Q3 | What does Confidential HTTP hide? | Secrets and, optionally, the response. Not the workflow inputs | Confirmed (source) |
 | Q4 | Confidential Workflows access | Unknown | **OPEN** (request) |
@@ -34,7 +34,17 @@ Items marked OPEN must be closed before the phase that depends on them, not befo
 - `monad-testnet` is in `EVMClient.SUPPORTED_CHAIN_SELECTORS` (capability `evm@1.0.0`), so
   `logTrigger`, `callContract`, `filterLogs` and `writeReport` all accept it.
 
-**OPEN: account side and forwarder address.**
+**Confirmed for the account (2026-10-09), with CRE CLI v1.37.0 after `cre login`.** `cre workflow supported-chains`
+lists `monad-testnet` for our tenant:
+
+| Chain | Selector | Forwarder | Mock forwarder (used by `cre workflow simulate`) |
+|---|---|---|---|
+| `monad-testnet` | `2183018362218727504` (matches the SDK) | `0xF8344CFd5c43616a4366C34E3EEE75af79a74482` | `0xB9F79d863261869B234c481D1f9A7af84AeAd192` |
+
+Both addresses have code on Monad testnet (`cast code`: 8,591 and 4,579 bytes). The forwarder is in `.env.example` as
+`CRE_FORWARDER_ADDRESS`. CLI v1.38.0 has since been released; we stay on v1.37.0 until the simulations pass.
+
+The steps used to confirm it (kept for reproducibility):
 
 1. Install the CRE CLI (not installed on this machine). The latest release is v1.37.0
    (2026-10-05); the spec needs v1.30.0 or later. Follow
@@ -323,6 +333,57 @@ Unverified external detail:
 
 ---
 
+## Phase 3 decisions and differences from the spec (2026-10-09)
+
+Decided with the project owner before building:
+
+- **P3-1. What `QUALIFIED_SCREENER_V1` checks.** The spec names the policy but not its check. Built: the input is the
+  agent's screener credential ID (a string). W1 sends it to `POST /qualify {credential}` on the screening provider
+  (Confidential HTTP in the CRE wiring, same API key) and passes when the provider lists the credential as qualified.
+  The mock provider (`services/mock-screening`) has a fixed, fictional list. The agent's owner makes the request, so the
+  result becomes the agent-level result (P2-1). This closes P2-11's "arrives with Phase 3".
+- **P3-2. Sealed bids are keyed by `bid:<bidCommitment>` and uploaded before `bid()`.** The spec's `taskId:agentId`
+  keys are predictable, and `PUT` is unauthenticated and write-once (P2-3). Anyone, including a rival bidder, could
+  store junk under any agent's key first. W3 would then drop that agent's bid, so a bidder could knock out a cheaper
+  competitor and break "lowest valid bid wins". Nobody else knows a bid commitment until it is on-chain, so a bidder who
+  uploads first cannot be squatted. The store still accepts the spec's `taskId:agentId` pattern (no behaviour change),
+  but nothing uses it. W3 looks each bid up by its on-chain commitment. Bids have no payload race either (unlike P2-12).
+- **P3-3. Additive edits to Phase 1-2 files**, each forced by a Phase 3 requirement: `Deploy.s.sol` (creates
+  `QUALIFIED_SCREENER_V1` and deploys `SealedBidHiring` pinned to W3; adds `sealedBidHiring` and `w3WorkflowId` to the
+  `veil` block of the deployment JSON), `sdk/src/deployments.ts` (the same two fields, optional), `scripts/src/gen-abis.ts`
+  (`sealedBidHiringAbi`), `cre/handlers/validator.ts` and its CRE wiring (P3-1), `services/mock-screening` (`/qualify`),
+  `services/sealed-store` (P3-2 key pattern), `cre/local-runner` (also watches `BiddingClosed` and runs the W3 handler
+  when `W3_DECRYPT_KEY` and `SEALED_STORE_W3_TOKEN` are set), `test/Leak.t.sol` (a second contract, `BidLeakTest`;
+  `LeakTest` is unchanged), the indexer page (a nav link only), `globals.css` (two rules), and the `Makefile`
+  (`phase3`). `make phase1` and `make phase2` still pass.
+
+Choices made where the spec is silent (none changes a claim):
+
+- **P3-4. Deadline boundary.** `bid` is accepted while `block.timestamp < deadline`, and `closeBidding` is allowed from
+  `block.timestamp >= deadline`. There is no second in which both are possible.
+- **P3-5. Task IDs start at 1** (`taskCount`), so 0 never names a task. A bid on an unknown task reverts `NotAttested`,
+  because the `onlyAttested` modifier runs first and an unknown task has no policy.
+- **P3-6. Extra contract surface.** Event `NoAward(taskId)` when W3 counts no valid bid (the spec only says the status
+  becomes NoAward). Error `ZeroMerkleRoot` rejects an award with a zero root. Views `getTask`, `getBids` (in
+  placement order, which W3 needs) and `getAward`, plus the public mapping `bidCommitmentOf`. The winner's salt is
+  checked but not stored.
+- **P3-7. Price encoding.** A price is a `uint256` in base units (the demo uses an 18-decimal fictional token). The sealed
+  opening is JSON `{price: "<decimal string>", salt: "0x…32 bytes"}`, because JSON numbers cannot carry a `uint256`.
+- **P3-8. W3 guards.** W3 refuses to decide (no report) if the number of bids it reads differs from `BiddingClosed.bidCount`.
+  It drops a bid whose opening is missing, does not open with the W3 key, is malformed, exceeds `uint256`, or does not
+  match the commitment. Its logs (and the local runner's) carry only what the report makes public, plus each dropped
+  bid's agent and reason, never a counted losing price.
+- **P3-9. How a loser gets an inclusion proof.** Only the root goes on-chain. A loser rebuilds W3's tree from public data:
+  every on-chain bid, `validBidCount` and the root (`sdk/src/merkle.ts reconstructBidTree`). When W3 dropped bids, it
+  searches the subsets of size `validBidCount`, capped at 65,536 combinations. A consequence is that *which* bids were
+  dropped can be derived from public data. The claims table never claimed that was hidden.
+- **P3-10. `identityCommitment` is not validated in `postTask`.** The demo passes 0 until Phase 5 brings Semaphore identities.
+- **P3-11. W3 CRE wiring status.** `cre/workflows/w3-bid-opener/main.ts` typechecks against `@chainlink/cre-sdk` 1.23.0 and
+  compiles to WASM (3.5 MB, Javy 8.1.0), including `@openzeppelin/merkle-tree`. Like W1, it has **not** been run under
+  `cre workflow simulate` (no CLI, Q1).
+
+---
+
 ## Pinned versions
 
 | Dependency | Version | How pinned |
@@ -345,4 +406,4 @@ Unverified external detail:
 | next / react / react-dom | 16.4.0 / 19.3.0 / 19.3.0 | `bun.lock`, exact |
 | typescript | 5.9.3 | `bun.lock`, exact (7.x skipped: Next.js tooling support unverified) |
 | Bun | 1.4.2 | `packageManager` in `package.json` |
-| CRE CLI | not installed | **OPEN** (Q1) |
+| CRE CLI | v1.37.0 (release binary `cre_darwin_arm64.zip`) | local toolchain, `~/.local/bin/cre` |

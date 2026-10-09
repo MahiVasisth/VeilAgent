@@ -26,3 +26,13 @@ export function inputCommitment(p: { agentId: bigint; policyId: Hex; input: stri
     ),
   );
 }
+
+/** `keccak256(abi.encode(uint256 taskId, uint256 agentId, uint256 price, bytes32 salt))`: a sealed bid (Phase 3). */
+export function bidCommitment(p: { taskId: bigint; agentId: bigint; price: bigint; salt: Hex }): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [{ type: "uint256" }, { type: "uint256" }, { type: "uint256" }, { type: "bytes32" }],
+      [p.taskId, p.agentId, p.price, p.salt],
+    ),
+  );
+}
