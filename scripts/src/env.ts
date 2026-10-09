@@ -13,12 +13,17 @@ export const CHAIN: Chain = anvil;
 const ANVIL_MNEMONIC = "test test test test test test test test test test test junk";
 const anvilAccount = (index: number): Account => mnemonicToAccount(ANVIL_MNEMONIC, { addressIndex: index });
 
-/** Demo roles. Indices 1-3 match RegisterAgents.s.sol's default agent owners. */
+/** Demo roles. Indices 1-3 match RegisterAgents.s.sol's default agent owners; 7 and 8 match Deploy.s.sol's
+ *  default treasury operator and local-runner transmitter. */
 export const roles = {
   deployer: anvilAccount(0),
   agentOwners: [anvilAccount(1), anvilAccount(2), anvilAccount(3)],
   clients: [anvilAccount(4), anvilAccount(5)],
   publicValidator: anvilAccount(6),
+  treasuryOperator: anvilAccount(7),
+  /** The SIMULATED DON's transmitter key (local runner). */
+  localDon: anvilAccount(8),
+  stranger: anvilAccount(9),
 };
 
 export const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC_URL) });

@@ -21,7 +21,7 @@ Items marked OPEN must be closed before the phase that depends on them, not befo
 | Q7 | Semaphore on Monad | No deployment; deploy our own | Confirmed (source + chain) |
 | Q8 | Monad testnet settings | Chain ID 10143, RPC `https://testnet-rpc.monad.xyz` | Confirmed (chain) |
 | H1–H5 | Hand checklist | — | **OPEN** |
-| Q9 | Does sealed-box decryption run inside a workflow? (from H2) | Probably not with libsodium | **OPEN** (simulate); fallback recommended now |
+| Q9 | Does sealed-box decryption run inside a workflow? (from H2) | libsodium: probably not. Adopted pure-JS noble sealed boxes (Phase 2); W1 compiles to WASM | **OPEN** (simulate) |
 
 ---
 
@@ -153,11 +153,16 @@ in `.env.example`.
 **Action:** once the CLI is installed, compile and simulate a probe workflow that imports `libsodium-wrappers`
 and calls `crypto_box_seal_open`. Record the result here.
 
-**Fallback (recommended to adopt now, behind the same `seal` interface):** pure-JS sealed boxes.
-X25519 from `@noble/curves`, XSalsa20-Poly1305 from `@noble/ciphers`, and the nonce
-`blake2b(epk ‖ recipientPk, 24)` from `@noble/hashes` (already a cre-sdk dependency, 2.2.0). These produce
-the same bytes as libsodium's `crypto_box_seal`, so clients can keep libsodium.
-Not installed yet, pending your decision.
+**Fallback, adopted in Phase 2 (decided 2026-10-09):** pure-JS sealed boxes in `sdk/src/seal.ts`.
+X25519 from `@noble/curves@1.9.1`, XSalsa20-Poly1305 and HSalsa20 from `@noble/ciphers@1.3.0`, and the nonce
+`blake2b(epk ‖ recipientPk, 24)` from `@noble/hashes@2.2.0`, all pinned as direct `sdk` dependencies. `seal.test.ts`
+checks that libsodium opens what noble seals and the other way round, so clients can keep libsodium. `libsodium-wrappers`
+moved to `devDependencies` (interop test only).
+
+**Progress:** `bunx cre-compile cre/workflows/w1-validator/main.ts` bundles the handler, including the noble code, and
+compiles it to WASM (2.7 MB) with Javy 8.1.0 without errors. The CRE runtime provides `atob`/`btoa` (SDK
+`prepareRuntime`) and `TextEncoder`/`TextDecoder` (Javy), which is all that opening a box needs; it needs no randomness.
+**Still OPEN:** actually running it under `cre workflow simulate`.
 
 ---
 
@@ -267,6 +272,57 @@ The installed source wins in each case. "Effect" says what changes in our build.
 
 ---
 
+## Phase 2 decisions and differences from the spec (2026-10-09)
+
+Decided with the project owner before building:
+
+- **P2-1. `latestRequest` only moves for agent controllers.** The spec lets anyone call `requestPrivate` for any agent,
+  and `isAttested` reads `latestRequest[agentId][policyId]`. Taken literally, a stranger could revoke an agent's pass
+  with a failing input, or attest an agent with an easy one. Built: anyone may still request (Flow A clients and the
+  treasury operator work as written), but `_processReport` updates `latestRequest` only when the request's requester
+  controls the agent *when the report lands*: its owner, an ERC-721 operator (ERC-8004's own rule for
+  `validationRequest`), or its verified agent wallet. `verifyResult` per request is unchanged. New event:
+  `LatestRequestUpdated(agentId, policyId, requestId)`. Note the asymmetry with `VeilGate._controls` (owner or wallet
+  only, I-4): an operator can refresh an agent's attestation but cannot use it to `bid`.
+- **P2-2. Sealed boxes are pure-JS (noble).** See Q9.
+- **P2-3. Sealed-store griefing is documented, not fixed.** `PUT` is unauthenticated and write-once, keyed by the public
+  requestId, so an observer can store junk first: W1 then stops (mismatch) and the request stays Pending. The client
+  can re-request with a new salt. Mitigation (future work): the store accepts a `PUT` only with a signature from the
+  request's on-chain requester. Recorded in docs/threat-model.md.
+- **P2-4. Additive edits to Phase 1 files:** `Deploy.s.sol` (Phase 2 contracts, nested `veil` block in the deployment
+  JSON), `sdk/src/deployments.ts` (optional `veil` field), `frontend/app/indexer/page.tsx` (split view above the
+  unchanged Phase 1 sections), plus `scripts/src/gen-abis.ts` (also writes `sdk/src/abi/veil.ts`), `scripts/src/env.ts`
+  (roles 7–9) and `contracts/foundry.toml` (read access to `test/vectors`). `make phase1` still passes.
+
+Choices made where the spec is silent (none changes a claim):
+
+- **P2-5. Input encoding.** The validation input is a UTF-8 string; `keccak256(input)` hashes its raw bytes. For
+  `SANCTIONS_SCREEN_V1` the input is the subject sent to the screening API. Vectors generated with `cast` are in
+  `contracts/test/vectors/commitments.json` and are checked by both Solidity and TypeScript.
+- **P2-6. Extra checks in `_processReport`:** the reported `tier` must be a valid enum value (`InvalidTier`).
+- **P2-7. `mirrorToERC8004` is once per request** (`AlreadyMirrored`), only after a result is recorded (`NotRecorded`),
+  callable by anyone, and emits `MirroredToERC8004`. This is the I-5 "idempotent" option.
+- **P2-8. `TreasuryAction.execute` is callable by anyone.** The spec restricts *whose result* counts (the treasury
+  operator's request), not who triggers the public action.
+- **P2-9. `MockForwarder` has a transmitter allow-list.** It checks no DON signatures, so the only key that may deliver
+  is the local runner's (Anvil account 8). It bubbles receiver reverts (C-4) and checks ERC-165 first (C-5).
+- **P2-10. W1 expiry** = `now + validityWindow − min(60 s, window/10)`. The margin absorbs clock skew between the
+  deciding clock and the block that includes the report. Locally, "now" is the latest block timestamp.
+- **P2-11. W1 evaluates `SANCTIONS_SCREEN_V1` only.** Other policies stop without a report (`QUALIFIED_SCREENER_V1`
+  arrives with Phase 3). The demo `SANCTIONS_SCREEN_V1` policy: tier `Don`, validity `POLICY_VALIDITY_SECONDS`
+  (default 3600).
+- **P2-12. Payload race.** The client uploads after `requestPrivate`, so W1 can trigger before the upload exists. The local
+  runner polls the store for up to 15 s; the CRE workflow fetches once, after the log trigger's `SAFE` confidence delay.
+  A request whose payload arrives too late stays Pending, and the client re-requests.
+
+Unverified external detail:
+
+- **C-8. Confidential HTTP secret template.** `cre/workflows/w1-validator/main.ts` puts `{{.SCREENING_API_KEY}}` in a header
+  and names the secret in `vaultDonSecrets`. The field names come from the SDK types; the `{{.NAME}}` template syntax comes
+  from the CRE docs and is not visible in the installed package. Confirm with `cre workflow simulate`.
+
+---
+
 ## Pinned versions
 
 | Dependency | Version | How pinned |
@@ -283,7 +339,9 @@ The installed source wins in each case. "Effect" says what changes in our build.
 | @chainlink/cre-sdk | 1.23.0 (→ cre-sdk-javy-plugin 1.7.0) | `bun.lock`, exact |
 | viem | 2.57.4 | `bun.lock`, exact |
 | @openzeppelin/merkle-tree | 1.0.8 | `bun.lock`, exact |
-| libsodium-wrappers | 0.8.4 | `bun.lock`, exact (see Q9) |
+| libsodium-wrappers | 0.8.4 | `bun.lock`, exact; devDependency, interop test only (see Q9) |
+| @noble/curves / @noble/ciphers / @noble/hashes | 1.9.1 / 1.3.0 / 2.2.0 | `sdk/package.json` + `bun.lock`, exact (Phase 2, Q9) |
+| Javy (fetched by `cre-compile` into `~/.cache/javy`) | 8.1.0 | `@chainlink/cre-sdk-javy-plugin` 1.7.0 |
 | next / react / react-dom | 16.4.0 / 19.3.0 / 19.3.0 | `bun.lock`, exact |
 | typescript | 5.9.3 | `bun.lock`, exact (7.x skipped: Next.js tooling support unverified) |
 | Bun | 1.4.2 | `packageManager` in `package.json` |

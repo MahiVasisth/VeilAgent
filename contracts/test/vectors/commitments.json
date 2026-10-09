@@ -1,0 +1,41 @@
+{
+  "_comment": "Generated with Foundry cast (cast keccak / cast abi-encode), independent of both implementations. Checked by test/Commitments.t.sol and sdk/src/commitments.test.ts.",
+  "vectors": [
+    {
+      "agentId": "0",
+      "policyName": "SANCTIONS_SCREEN_V1",
+      "policyId": "0x6858c9155c7a858fcc0fbea6c39c6a922596feda65ec07f9e1ee292af9f53930",
+      "input": "Northwind Trading LLC",
+      "salt": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "inputHash": "0xece98ea9030c88a2268a5077dcc1dd557bbc04257d0aee74daac525a0885eab3",
+      "commitment": "0x87ea56341d9a4aa5331f7990dc45d6726359857f5a0d648296c43c8990f5149e"
+    },
+    {
+      "agentId": "2",
+      "policyName": "SANCTIONS_SCREEN_V1",
+      "policyId": "0x6858c9155c7a858fcc0fbea6c39c6a922596feda65ec07f9e1ee292af9f53930",
+      "input": "Kestrel Shipping Co",
+      "salt": "0xabababababababababababababababababababababababababababababababcd",
+      "inputHash": "0x679d447d4993efb613b7a79f43fa2aac8251749965602c86b5a62c57854bc909",
+      "commitment": "0x92dc0bffe92155b918d6eaebea16677e27a7d5e7e96edbd4fad0174afb161348"
+    },
+    {
+      "agentId": "12345678901234567890",
+      "policyName": "OTHER_POLICY_V1",
+      "policyId": "0x686df779979b9639c9a1294ba4d1b376526c3789c8411e05514b09cabe99881c",
+      "input": "",
+      "salt": "0x0000000000000000000000000000000000000000000000000000000000000001",
+      "inputHash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+      "commitment": "0xa31c5f979a796e8f5b41bba4192193775be565ca1a34156b5141bd49883de0fb"
+    },
+    {
+      "agentId": "7",
+      "policyName": "SANCTIONS_SCREEN_V1",
+      "policyId": "0x6858c9155c7a858fcc0fbea6c39c6a922596feda65ec07f9e1ee292af9f53930",
+      "input": "Zürich Ä 株式会社 🚢",
+      "salt": "0xfefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefe",
+      "inputHash": "0xa860785743fff306be5f1bc709a5b709da72c7bdbac4bac63fd502ceb560c088",
+      "commitment": "0xf845c107022a9d4249cba7106a5deb12ddadccbefc98bcf9bf8c784ac8f80244"
+    }
+  ]
+}

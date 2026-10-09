@@ -2,13 +2,14 @@
 SHELL := /bin/bash
 CONTRACTS := contracts
 
-.PHONY: help install build abis test phase1 frontend demo deploy-testnet clean
+.PHONY: help install build abis test phase1 phase2 frontend demo deploy-testnet clean
 
 help:
 	@echo "make install         install submodules and JS workspaces"
 	@echo "make build           compile contracts (and TypeScript once it exists)"
 	@echo "make test            forge tests + bun tests"
 	@echo "make phase1          Phase 1 exit check: clean Anvil, public ERC-8004 flow, indexer view (KEEP=1 to leave it running)"
+	@echo "make phase2          Phase 2 exit check: private validation, gate, local runner (SIMULATED DON), split view (KEEP=1 to leave it running)"
 	@echo "make frontend        serve the frontend at http://127.0.0.1:3000 (needs a running, deployed Anvil)"
 	@echo "make demo            run the demo script on a clean Anvil (Phase 6)"
 	@echo "make deploy-testnet  deploy to Monad testnet (needs .env)"
@@ -33,6 +34,9 @@ test:
 
 phase1:
 	./scripts/phase1.sh
+
+phase2:
+	./scripts/phase2.sh
 
 frontend:
 	cd frontend && bun run dev

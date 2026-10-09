@@ -48,13 +48,16 @@
     "sdk": {
       "name": "@veil8004/sdk",
       "dependencies": {
+        "@noble/ciphers": "1.3.0",
+        "@noble/curves": "1.9.1",
+        "@noble/hashes": "2.2.0",
         "@openzeppelin/merkle-tree": "1.0.8",
         "@semaphore-protocol/core": "4.14.3",
-        "libsodium-wrappers": "0.8.4",
         "viem": "2.57.4",
       },
       "devDependencies": {
         "@types/libsodium-wrappers": "0.8.2",
+        "libsodium-wrappers": "0.8.4",
       },
     },
     "services/mock-screening": {

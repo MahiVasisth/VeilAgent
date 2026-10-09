@@ -1,0 +1,10 @@
+{
+  "chainSelectorName": "monad-testnet",
+  "isTestnet": true,
+  "privateValidationRegistry": "0x0000000000000000000000000000000000000000",
+  "policyRegistry": "0x0000000000000000000000000000000000000000",
+  "sealedStoreUrl": "https://sealed-store.example.invalid",
+  "screeningUrl": "https://screening.example.invalid",
+  "confidentialWorkflow": false,
+  "gasLimit": "500000"
+}

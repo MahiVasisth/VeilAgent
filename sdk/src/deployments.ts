@@ -9,6 +9,21 @@ export type Deployment = {
   identityRegistry: Address;
   reputationRegistry: Address;
   validationRegistry: Address;
+  /** Phase 2+. Absent in a Phase 1-only deployment file. */
+  veil?: VeilDeployment;
+};
+
+/** Veil8004 contracts from script/Deploy.s.sol (Phase 2). */
+export type VeilDeployment = {
+  /** MockForwarder on Anvil (SIMULATION); the CRE forwarder elsewhere. */
+  forwarder: Address;
+  forwarderIsMock: boolean;
+  policyRegistry: Address;
+  privateValidationRegistry: Address;
+  treasuryAction: Address;
+  treasuryOperator: Address;
+  /** Workflow id the registry accepts reports from (`setExpectedWorkflowId`); zero if unset. */
+  w1WorkflowId: `0x${string}`;
 };
 
 /** Shape of contracts/deployments/<chainId>-agents.json, written by script/RegisterAgents.s.sol. */

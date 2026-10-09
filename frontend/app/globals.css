@@ -9,6 +9,10 @@
   --validator: #8a5a2f;
   --leak: #b3261e;
   --leak-bg: #fbeceb;
+  --sealed: #3d5a99;
+  --sealed-bg: #eceff8;
+  --sim-bg: #fff6dc;
+  --sim-border: #c99a1e;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -22,6 +26,10 @@
     --validator: #d29b62;
     --leak: #f2867f;
     --leak-bg: #3a1f1d;
+    --sealed: #9db4ec;
+    --sealed-bg: #1f2533;
+    --sim-bg: #33290f;
+    --sim-border: #c99a1e;
   }
 }
 * { box-sizing: border-box; }
@@ -50,3 +58,11 @@ td.leak { color: var(--leak); font-weight: 600; }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 .error { border-color: var(--leak); }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+.split h3 { margin: 0 0 8px; font-size: 1rem; }
+.split .sub { color: var(--muted); font-size: 0.85rem; margin: 0 0 12px; }
+td.sealed { color: var(--sealed); font-weight: 600; }
+.sealed-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; font-size: 0.9rem; }
+.sealed-list li { background: var(--sealed-bg); border-left: 3px solid var(--sealed); padding: 6px 10px; border-radius: 4px; }
+.sim-banner { background: var(--sim-bg); border: 1px solid var(--sim-border); border-radius: 8px; padding: 8px 12px; margin: 0 0 16px; font-size: 0.9rem; }

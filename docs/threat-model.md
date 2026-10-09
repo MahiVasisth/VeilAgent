@@ -1,7 +1,7 @@
 # Veil8004 threat model
 
-Status: Phase 0. This file holds the claims table from docs/SPEC.md and is updated whenever a
-Phase 0 answer (docs/phase0.md) changes what can be claimed. The README claims only what this
+Status: Phase 2. This file holds the claims table from docs/SPEC.md and is updated whenever a
+Phase 0 answer or a later decision (docs/phase0.md) changes what can be claimed. The README claims only what this
 table says.
 
 ## Claims and limits
@@ -41,6 +41,32 @@ table says.
 - C-6 (QuickJS runtime): in a standard workflow the sealed-store bearer token is visible to DON nodes,
   like the payload it protects. Already covered by the node-operator rows.
 
+## What Phase 2 demonstrates (locally, 2026-10-09)
+
+`make phase2` runs on Anvil with the local runner, a **simulation** of the DON (no consensus, no report signatures, no
+enclave; the screening API key comes from env instead of Confidential HTTP).
+
+| Row | Demonstrated by |
+|---|---|
+| Validation input hidden from chain observers | `contracts/test/Leak.t.sol` scans every call's calldata, storage write and log of the flow; `scripts/src/phase2.ts` scans Phase 2 calldata and logs plus the full Anvil state for every input, salt and unsalted input hash |
+| Input bound to the on-chain commitment | the W1 handler stops on a tampered opening (handler tests, runner log); the registry rejects a mismatched commitment (`CommitmentMismatch`) |
+| Gated action visibility: No | `ActionExecuted(requestId)` is public, by design |
+| Assurance tier enforcement: No | the tier is recorded (`Don` locally) and displayed, not checked against the policy |
+
+Not demonstrated in Phase 2: Confidential HTTP (the W1 CRE wiring is written and compiles, but has not been simulated or
+deployed, docs/phase0.md Q1/C-8), and anything that needs a Confidential Workflow.
+
 ## Adversaries, assets and residual risks
 
-To be completed in Phase 6.
+To be completed in Phase 6. Recorded so far:
+
+- **Sealed-store griefing (Phase 2, P2-3).** The store's `PUT` is unauthenticated and keys are write-once, and the
+  requestId is public in `PrivateValidationRequested`. An observer can upload junk under a fresh requestId before the
+  client does. W1 then finds a mismatch and writes no report, so the request stays Pending (it never yields a wrong
+  result). The client can re-request with a new salt, but the attacker can repeat this. Future mitigation: accept a `PUT`
+  only with a signature from the request's on-chain requester.
+- **Who can move an agent's attestation (P2-1).** Only requests by the agent's owner, an ERC-721 operator or its
+  verified wallet update `latestRequest`. Third-party requests get a per-request result only.
+- **Payload race (P2-12).** A payload uploaded after W1 has fetched leaves the request Pending.
+- **Requester and agent are public.** `PrivateValidationRequested` and the transaction sender show who asked for which
+  policy on which agent, and the result. Only the input is hidden.
