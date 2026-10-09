@@ -10,5 +10,9 @@
   },
   "devDependencies": {
     "@types/libsodium-wrappers": "0.8.2"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./deployments": "./src/deployments.ts"
   }
 }

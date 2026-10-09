@@ -1,0 +1,52 @@
+:root {
+  --bg: #fbfaf7;
+  --surface: #ffffff;
+  --text: #1d1d1b;
+  --muted: #6b6a66;
+  --border: #e3e1db;
+  --client: #2f6fb3;
+  --agent: #2f8a5b;
+  --validator: #8a5a2f;
+  --leak: #b3261e;
+  --leak-bg: #fbeceb;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615;
+    --surface: #1f1f1d;
+    --text: #ecebe7;
+    --muted: #a3a29d;
+    --border: #34332f;
+    --client: #6fa8e6;
+    --agent: #66c495;
+    --validator: #d29b62;
+    --leak: #f2867f;
+    --leak-bg: #3a1f1d;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 1.6rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+p.lede { color: var(--muted); margin: 0 0 16px; }
+nav { display: flex; gap: 16px; margin-bottom: 24px; font-size: 0.9rem; }
+nav a { color: var(--muted); }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.leaks { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.leaks li { background: var(--leak-bg); border-left: 3px solid var(--leak); padding: 6px 10px; border-radius: 4px; overflow-wrap: anywhere; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+td.leak { color: var(--leak); font-weight: 600; }
+.graph svg { width: 100%; height: auto; display: block; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.error { border-color: var(--leak); }

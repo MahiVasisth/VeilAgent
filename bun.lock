@@ -27,6 +27,7 @@
     "frontend": {
       "name": "@veil8004/frontend",
       "dependencies": {
+        "@veil8004/sdk": "workspace:*",
         "next": "16.4.0",
         "react": "19.3.0",
         "react-dom": "19.3.0",
