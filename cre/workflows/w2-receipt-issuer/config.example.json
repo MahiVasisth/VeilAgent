@@ -1,0 +1,7 @@
+{
+  "chainSelectorName": "monad-testnet",
+  "isTestnet": true,
+  "sealedBidHiring": "0x0000000000000000000000000000000000000000",
+  "receiptGroupManager": "0x0000000000000000000000000000000000000000",
+  "gasLimit": "600000"
+}

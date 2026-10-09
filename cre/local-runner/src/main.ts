@@ -2,6 +2,7 @@
 // Env: ANVIL_RPC_URL, W1_DECRYPT_KEY, SEALED_STORE_URL, SEALED_STORE_W1_TOKEN, MOCK_SCREENING_URL, SCREENING_API_KEY,
 //      LOCAL_DON_PRIVATE_KEY (default: Anvil account 8, which Deploy.s.sol allow-lists on the MockForwarder).
 //      Phase 3 (W3, optional): W3_DECRYPT_KEY and SEALED_STORE_W3_TOKEN. Without both, BiddingClosed is ignored.
+//      Phase 5 (W2): no env; runs whenever the deployment has a ReceiptGroupManager.
 import { join } from "node:path";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { anvil } from "viem/chains";

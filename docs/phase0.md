@@ -443,6 +443,12 @@ Choices made where the spec is silent (none changes a claim):
   epoch, category, score and nullifier; `AnonymousFeedback.t.sol` byte-scans a rating's calldata and logs and finds no
   member's commitment or address. The rater is hidden among the group's members, so the anonymity set is the number of
   clients with a receipt in that category and epoch.
+- **P5-11. W2 receipt issuer.** `cre/handlers/receiptIssuer.ts` reads the task back (never trusts the `JobCompleted`
+  log) and sends no report when a receipt already exists, the task is not Completed, the commitment is 0 or it is outside
+  the SNARK field. Each of those would revert on-chain. The local runner runs W2 whenever the deployment has a
+  `ReceiptGroupManager` (no secrets: W2 reads only public data), and checks inside the delivery queue.
+  `cre/workflows/w2-receipt-issuer/main.ts` typechecks and compiles to WASM (2.6 MB). Like W1 and W3, it has **not** been
+  run under `cre workflow simulate` (Q1).
 
 ## Pinned versions
 

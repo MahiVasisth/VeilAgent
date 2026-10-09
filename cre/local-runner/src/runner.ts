@@ -1,6 +1,7 @@
 // LOCAL DON SIMULATION. Stands in for the CRE Workflow DON on Anvil so the demo and end-to-end tests run without a CRE
 // account. It watches the same trigger events as the deployed workflows, runs the same pure handlers
-// (cre/handlers/validator.ts for W1; cre/handlers/bidOpener.ts for W3, Phase 3), and delivers each report through the
+// (cre/handlers/validator.ts for W1; cre/handlers/bidOpener.ts for W3, Phase 3; cre/handlers/receiptIssuer.ts for W2,
+// Phase 5), and delivers each report through the
 // MockForwarder from one allow-listed key.
 // What it does NOT simulate: DON consensus, report signatures, the enclave for Confidential HTTP (the screening API
 // key is read from env here), or Confidential Workflows. Results are reported at Tier.Don.
@@ -15,14 +16,22 @@ import {
   type Hex,
   type PublicClient,
 } from "viem";
-import { mockForwarderAbi, policyRegistryAbi, privateValidationRegistryAbi, sealedBidHiringAbi } from "@veil8004/sdk/abi/veil";
+import {
+  mockForwarderAbi,
+  policyRegistryAbi,
+  privateValidationRegistryAbi,
+  receiptGroupManagerAbi,
+  sealedBidHiringAbi,
+} from "@veil8004/sdk/abi/veil";
 import { getPayload } from "@veil8004/sdk/sealed-store";
 import type { Deployment } from "@veil8004/sdk/deployments";
 import { decodeValidationRequested, runValidator, Tier, type ValidationRequest } from "../../handlers/validator";
 import { decodeBiddingClosed, runBidOpener, type BiddingClosed } from "../../handlers/bidOpener";
+import { decodeJobCompleted, runReceiptIssuer, type JobCompleted } from "../../handlers/receiptIssuer";
 
 export const W1_WORKFLOW_NAME = "veil8004-w1-validator";
 export const W3_WORKFLOW_NAME = "veil8004-w3-bid-opener";
+export const W2_WORKFLOW_NAME = "veil8004-w2-receipt-issuer";
 const STATUS_PENDING = 1;
 const TASK_CLOSED = 2;
 
@@ -54,6 +63,8 @@ export type Outcome =
 export type AwardOutcome =
   | { taskId: bigint; delivered: true; winnerAgentId: bigint; validBidCount: number; dropped: number; txHash: Hex }
   | { taskId: bigint; delivered: false; reason: string };
+
+export type ReceiptOutcome = { taskId: bigint; delivered: true; txHash: Hex } | { taskId: bigint; delivered: false; reason: string };
 
 export function createLocalRunner(cfg: RunnerConfig) {
   const maybeVeil = cfg.deployment.veil;
@@ -240,23 +251,74 @@ export function createLocalRunner(cfg: RunnerConfig) {
     );
   }
 
+  // ---- W2 receipt issuer (Phase 5) -----------------------------------------------------------
+  // Runs whenever ReceiptGroupManager is deployed: W2 reads only public data, so it needs no secrets.
+  const receipts = veil.receiptGroupManager;
+  const seenCompleted = new Set<bigint>();
+
+  /** Runs W2 for one JobCompleted event. The checks run inside the delivery queue so they see the latest state. */
+  async function processCompleted(event: JobCompleted): Promise<ReceiptOutcome> {
+    if (!hiring || !receipts || !veil.w2WorkflowId) throw new Error("W2 is not configured");
+    const { taskId } = event;
+    return serialised(async () => {
+      const result = await runReceiptIssuer(event, {
+        readTask: (id) => publicClient.readContract({ address: hiring, abi: sealedBidHiringAbi, functionName: "getTask", args: [id] }),
+        receiptIssued: (id) => publicClient.readContract({ address: receipts, abi: receiptGroupManagerAbi, functionName: "receiptIssued", args: [id] }),
+      });
+      if (result.stop) {
+        log(`${result.reason}, skipping`);
+        return { taskId, delivered: false as const, reason: result.reason };
+      }
+      const txHash = await wallet.writeContract({
+        address: veil.forwarder,
+        abi: mockForwarderAbi,
+        functionName: "deliver",
+        args: [receipts, veil.w2WorkflowId!, await nameBytesOf(W2_WORKFLOW_NAME), cfg.workflowOwner, "0x0002", result.report],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status !== "success") throw new Error(`receipt delivery reverted: ${txHash}`);
+      log(`task ${taskId}: receipt delivered (agent #${event.agentId}) tx ${txHash}`);
+      return { taskId, delivered: true as const, txHash };
+    });
+  }
+
+  /** Processes every not-yet-seen JobCompleted log in [fromBlock, toBlock]. */
+  async function processCompletedRange(fromBlock: bigint, toBlock: bigint): Promise<ReceiptOutcome[]> {
+    if (!hiring || !receipts) return [];
+    const logs = await publicClient.getLogs({ address: hiring, fromBlock, toBlock });
+    const events = parseEventLogs({ abi: sealedBidHiringAbi, eventName: "JobCompleted", logs });
+    const fresh = events.filter((e) => !seenCompleted.has(e.args.taskId));
+    for (const e of fresh) seenCompleted.add(e.args.taskId);
+    return Promise.all(
+      fresh.map((e) =>
+        processCompleted(decodeJobCompleted({ topics: e.topics as Hex[], data: e.data })).catch((err: unknown) => {
+          const reason = err instanceof Error ? err.message.split("\n")[0]! : String(err);
+          log(`task ${e.args.taskId}: receipt error (${reason})`);
+          return { taskId: e.args.taskId, delivered: false as const, reason };
+        }),
+      ),
+    );
+  }
+
   /** Follows the chain from `fromBlock` until `signal` aborts. */
   async function watch(fromBlock: bigint, signal?: AbortSignal): Promise<void> {
     let next = fromBlock;
     log(`watching ${registry} for PrivateValidationRequested from block ${next}`);
     if (hiring && w3) log(`watching ${hiring} for BiddingClosed from block ${next}`);
+    if (hiring && receipts) log(`watching ${hiring} for JobCompleted from block ${next}`);
     while (!signal?.aborted) {
       const head = await publicClient.getBlockNumber();
       if (head >= next) {
         void processRange(next, head);
         void processBidRange(next, head);
+        void processCompletedRange(next, head);
         next = head + 1n;
       }
       await sleep(cfg.pollMs ?? 300);
     }
   }
 
-  return { process, processRange, processClosed, processBidRange, watch };
+  return { process, processRange, processClosed, processBidRange, processCompleted, processCompletedRange, watch };
 }
 
 const short = (h: string) => `${h.slice(0, 10)}…`;
