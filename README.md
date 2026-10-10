@@ -3,32 +3,47 @@
 Private attestations for ERC-8004 agents on Monad testnet, with sealed-bid agent hiring as the
 flagship application and Chainlink CRE running the validator, the bid opener and the receipt issuer.
 
-**Status: Phase 4 (selective disclosure).** The requester of one private validation can open it to an auditor with a
-disclosure bundle (`sdk/src/disclosure.ts`): the request's input and salt, plus where to find it. The auditor
-(`scripts/src/auditor.ts`, or the `/audit` page) recomputes the commitment and compares it, the agent, the policy, the
-result, the tier and the expiry with the chain. Nothing goes on-chain, and every other request stays sealed.
+**Status: Phase 6 (demo and documents).** All flows are built and run end to end on a local Anvil with one command:
 
-Phase 3 (sealed-bid hiring) added `SealedBidHiring`, the second `VeilGate` consumer: only agents
-that hold `QUALIFIED_SCREENER_V1` can bid, bids are salted commitments, and the W3 bid-opener handler opens them
-off-chain and awards the lowest. Only the winner, the winning price and a Merkle root over the counted bids reach the
-chain. As in Phase 2, the DON is **simulated** locally.
+```bash
+make demo            # fresh Anvil -> deploy -> the six-step demo, every statement checked -> five pages checked
+KEEP=1 make demo     # same, and leave everything running: http://127.0.0.1:3000/indexer
+```
 
-Phase 2 (private validation and gate), on top of the Phase 1 public baseline: `PolicyRegistry`,
-`PrivateValidationRegistry` (salted input commitments, results written back through a CRE forwarder), `VeilGate` and
-its first consumer `TreasuryAction`, the W1 validator handler, the sealed store, a **mock** screening API, a
-**MockForwarder**, and a **local runner that simulates the CRE DON**. The indexer page now shows the split view.
+The walkthrough for someone seeing it cold is [docs/demo.md](docs/demo.md).
 
-What Phase 2 demonstrates, all locally on Anvil, and only as far as the [claims table](docs/threat-model.md) allows:
-the validation input stays off-chain (only a salted commitment is published), and it is bound to that commitment
-(a tampered input yields no result). The gated treasury action itself is public.
-Not demonstrated yet: anything on a real CRE DON. The W1 CRE workflow is written and compiles to WASM, but has not been
-simulated or deployed (no CRE CLI yet), so Confidential HTTP credential hiding is designed, not demoed. Input hiding
-from node operators needs a Confidential Workflow and is designed, not demoed.
+**Use it yourself:**
+
+```bash
+make app             # fresh local chain + everything running; open http://127.0.0.1:3000/app (Ctrl-C stops)
+```
+
+The app at `/app` lets you act as an agent owner, a client or the treasury, with a browser wallet (MetaMask on
+`http://127.0.0.1:8545`, chain 31337) or one of the labeled local demo accounts. You can get an agent qualified,
+post a task, place sealed bids, close bidding, mark a job completed, rate anonymously, screen a counterparty privately,
+execute the gated treasury action, and download an audit bundle. Salts, bid prices and rating identities are created
+in your browser and kept in its local storage (exportable under "My secrets"). Rating proofs are generated in your
+browser. The app's server only forwards ciphertext to the sealed store and relays finished rating proofs.
+
+**What is simulated or mocked, everywhere in this repo:**
+- **The CRE DON.** A local runner (`cre/local-runner`) runs the same W1, W3 and W2 handler code as the CRE workflows
+  and delivers reports through a **MockForwarder**. It has no consensus, no report signatures and no enclave, and it
+  reads the screening API key from env, not through Confidential HTTP. The three CRE workflows are written and compile
+  to WASM, but have not been run under `cre workflow simulate` or deployed.
+- **The screening provider.** A mock API with a fictional hit list and a fictional credential list.
+- **Part of the anonymity set.** The population simulator (`scripts/src/simulator.ts`) adds simulated clients so
+  that a receipt group is not one person. Pages show a banner and a `simulated` label while its data is on the chain.
+- **All names, counterparties, credentials and prices** are fictional demo data.
+
+Input hiding from CRE node operators needs a Confidential Workflow, and is **designed, not demoed**. So is the hiding
+of validator API credentials through Confidential HTTP.
 
 - Build spec: [docs/SPEC.md](docs/SPEC.md)
 - Phase 0 findings and open items: [docs/phase0.md](docs/phase0.md)
-- What this project claims and does not claim: [docs/threat-model.md](docs/threat-model.md).
+- What this project claims and does not claim: [docs/threat-model.md](docs/threat-model.md), copied below.
   This README makes no claim beyond that table.
+- The ERC-8004 extension these contracts propose: [docs/extension-draft.md](docs/extension-draft.md)
+- Demo walkthrough: [docs/demo.md](docs/demo.md)
 
 ## Setup
 
@@ -121,7 +136,77 @@ bun scripts/src/auditor.ts bundle.json --json     # machine-readable report
 
 The bundle contains the salt. Anyone who holds it can verify the request and pass it on, so hand it only to the auditor.
 
+### Phase 5: receipts and anonymous feedback
+
+```bash
+make artifacts       # once: fetch the Semaphore proving artifacts (pinned hashes; proving is offline after this)
+make phase5          # clean Anvil -> deploy (incl. our own Semaphore V4) -> hiring -> W2 receipts -> ratings -> anchor
+KEEP=1 make phase5   # same, but leave everything running: http://127.0.0.1:3000/indexer
+```
+
+`scripts/src/phase5.ts` has three clients post tasks with Semaphore identity commitments and hire through sealed bids.
+When a client marks its job completed, W2 (the local runner) adds the client's commitment to the receipt group for
+that category and epoch. Each client then proves membership offline and rates the agent from a fresh wallet. A second
+rating for the same agent and epoch is rejected. So are ratings from non-members, out-of-range scores, mismatched
+scopes, ratings for agents with no job in the group, and late ratings. No receipt is issued without a completed,
+awarded job with an identity commitment. After the rating window, anyone anchors the average into the ERC-8004
+Reputation Registry. It is read back with `getSummary(agent, [AnonymousFeedback], "veil8004", "anon-aggregate")`.
+
+```bash
+bun scripts/src/rater.ts identity --out me.identity                  # commitment to pass to postTask
+bun scripts/src/rater.ts rate --task 1 --score 5 --identity me.identity # proves offline, sends from a fresh wallet
+```
+
+As far as the claims table allows: the rater is hidden within the group's anonymity set, and the score is not hidden.
+The set is small (3 in `make phase5`), and the client's identity commitment is public from `postTask` onwards.
+
+### Phase 6: the demo, the simulator and the cost panel
+
+`make demo` runs the spec's demo script (docs/demo.md walks through it). It also adds:
+
+- **`/costs`**: gas per operation, measured from transaction receipts. Plain ERC-8004 next to Veil8004, with the MockForwarder overhead labeled.
+- **`/claims`**: the claims table, read from docs/threat-model.md.
+- **The population simulator**: `make simulate CLIENTS=6 [RATE=1]` against a running `KEEP=1 make demo` chain
+  (first `source` the `public-keys.env` file that the demo prints). Agent attestations that lapsed are renewed through W1.
+  Everything it creates is listed in `contracts/deployments/31337-simulated.json` and labeled on the pages.
+
 Everything runs locally on Anvil without a CRE account.
+
+### Monad testnet
+
+```bash
+DRY_RUN=1 make deploy-testnet   # rehearse on a local fork of Monad testnet (live ERC-8004 registries + CRE forwarder); spends nothing
+make deploy-testnet             # the real deployment; needs a funded DEPLOYER_PRIVATE_KEY and TREASURY_OPERATOR in .env
+```
+
+Not deployed yet; the remaining hand-run steps are in [docs/submission.md](docs/submission.md).
+
+## Claims and limits
+
+| Property | Claimed? | Notes |
+|---|---|---|
+| Validation input hidden from chain observers | Yes | Salted commitment only |
+| Input bound to the on-chain commitment | Yes | W1 recomputes it and the registry rejects a mismatch |
+| Validation input hidden from CRE node operators | Only with a Confidential Workflow | In a standard workflow the nodes decrypt the payload |
+| Validator API credentials hidden | Yes | Confidential HTTP |
+| Losing bid prices hidden from chain observers | Yes | Never opened on-chain |
+| Bids hidden from CRE node operators | Only with a Confidential Workflow | W3 sees every bid |
+| Winner and winning price | Not hidden | Public by design |
+| Which agents bid | Not hidden | Bidder addresses are visible; a relayer is future work |
+| Winner's bid matches its commitment | Yes | Checked on-chain |
+| The winner was the lowest valid bid | Trusted to W3 | The chain cannot check it without opening losing bids; losers can only prove inclusion |
+| Bidder collusion | No | Out of scope |
+| Selective disclosure to an auditor | Yes | One request, when the requester chooses |
+| Forced disclosure by a third party | No | Only the requester holds the salt |
+| Rater unlinkable to wallet | Yes, within the group's anonymity set | Small groups give weak anonymity; the client's identity commitment is public at postTask |
+| Rater actually used the rated agent | Partly | The proof shows a completed job with some agent in that category and epoch, and that the rated agent had one too |
+| Individual scores | Not hidden | Only the rater is hidden |
+| Linking through the rating transaction | Mitigated by a relayer or fresh wallet | State the residual risk |
+| Receipt farming by a colluding agent | Raised in cost, not eliminated | Each receipt needs an awarded, completed job |
+| Payment rail privacy | No | Out of scope |
+| Gated action visibility | No | The action itself is public |
+| Assurance tier enforcement | No | Recorded and displayed; enforcement is specified in the extension draft |
+| Simulated clients | Disclosed | The demo's anonymity set is partly simulated |
 
 ## Layout
 
@@ -129,8 +214,8 @@ Everything runs locally on Anvil without a CRE account.
 contracts/   Foundry project (src/{interfaces,core,consumers,receipts,mocks}, test/, script/)
 cre/         handlers/ (pure), workflows/ (CRE wiring), local-runner/ (DON simulation)
 services/    sealed-store/, mock-screening/ (MOCK)
-sdk/         commitments, seal, bids, merkle, disclosure, semaphore
-scripts/     client, bidder, auditor, demo, simulator
-frontend/    indexer split view, auction view, cost panel
-docs/        SPEC.md, phase0.md, threat-model.md, extension-draft.md
+sdk/         commitments, seal, bids, merkle, disclosure, semaphore, claims, indexer views
+scripts/     client, bidder, auditor, rater, demo, simulator, deploy-testnet, phase exit checks
+frontend/    indexer split view, auction view, audit, cost panel, claims
+docs/        SPEC.md, phase0.md, threat-model.md, extension-draft.md, demo.md, writeup.md, submission.md
 ```

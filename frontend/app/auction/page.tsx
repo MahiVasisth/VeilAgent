@@ -1,19 +1,20 @@
 import { connection } from "next/server";
 import { formatUnits } from "viem";
-import { buildAuctionView, buildPublicGraph, fetchAuctionData, fetchPublicData, type AuctionView } from "@veil8004/sdk";
-import { deployment, publicClient, RPC_URL } from "../../lib/chain";
+import { buildAuctionView, buildPublicGraph, fetchAuctionData, fetchPublicData, type AuctionView, type SimulatedFile } from "@veil8004/sdk";
+import { deployment, publicClient, RPC_URL, simulated as loadSimulated } from "../../lib/chain";
+import { SimDataBanner } from "../Nav";
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-type Loaded = { view: AuctionView | null; simulated: boolean };
+type Loaded = { view: AuctionView | null; simulated: boolean; sim: SimulatedFile | null };
 
 async function load(): Promise<Loaded | { error: string }> {
   try {
     const d = deployment();
     const raw = await fetchAuctionData(publicClient, d);
-    if (!raw) return { view: null, simulated: false };
+    if (!raw) return { view: null, simulated: false, sim: null };
     const graph = buildPublicGraph(await fetchPublicData(publicClient, d));
-    return { view: buildAuctionView(raw, new Map(graph.agents.map((a) => [a.agentId, a.name]))), simulated: d.veil?.forwarderIsMock ?? false };
+    return { view: buildAuctionView(raw, new Map(graph.agents.map((a) => [a.agentId, a.name]))), simulated: d.veil?.forwarderIsMock ?? false, sim: loadSimulated() };
   } catch (e) {
     return { error: e instanceof Error ? e.message.split("\n")[0]! : String(e) };
   }
@@ -25,11 +26,6 @@ export default async function AuctionPage() {
 
   return (
     <main>
-      <nav>
-        <a href="/indexer">Indexer view</a>
-        <a href="/auction">Auction view</a>
-        <a href="/audit">Audit</a>
-      </nav>
       <h1>Sealed-bid hiring</h1>
       <p className="lede">
         SealedBidHiring on local Anvil (<code>{RPC_URL}</code>), rebuilt from public events and transactions only. Bids
@@ -55,11 +51,15 @@ export default async function AuctionPage() {
               fictional credential list.
             </p>
           )}
+          <SimDataBanner sim={data.sim} />
           {data.view.tasks.length === 0 && <div className="card">No tasks yet.</div>}
           {data.view.tasks.map((t) => (
             <section key={t.taskId.toString()} className="card" data-testid="task">
               <h2>
                 Task #{t.taskId.toString()} · {t.status}
+                {data.sim?.taskIds.includes(t.taskId.toString()) && (
+                  <> <span className="sim-tag" data-testid="sim-task">simulated client</span></>
+                )}
               </h2>
               <p className="sub">
                 Client <span className="mono">{short(t.client)}</span> · category {t.categoryName ?? short(t.category)} · bidders

@@ -111,6 +111,11 @@ contract Deploy is Script {
         string memory json = vm.serializeString(key, "veil", veilJson);
         string memory path = string.concat(vm.projectRoot(), "/deployments/", vm.toString(block.chainid), ".json");
         vm.writeJson(json, path);
+        // A new deployment starts with no simulated data: drop the population simulator's labels from an earlier one
+        // (scripts/src/simulator.ts writes them; the frontend shows a SIMULATED banner while they exist).
+        string memory simulated =
+            string.concat(vm.projectRoot(), "/deployments/", vm.toString(block.chainid), "-simulated.json");
+        if (vm.exists(simulated)) vm.removeFile(simulated);
 
         console2.log("IdentityRegistry         ", identity);
         console2.log("ReputationRegistry       ", reputation);

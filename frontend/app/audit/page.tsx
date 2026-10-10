@@ -32,11 +32,6 @@ export default async function AuditPage() {
 
   return (
     <main>
-      <nav>
-        <a href="/indexer">Indexer view</a>
-        <a href="/auction">Auction view</a>
-        <a href="/audit">Audit</a>
-      </nav>
       <h1>Selective disclosure</h1>
       <p className="lede">
         PrivateValidationRegistry on local Anvil (<code>{RPC_URL}</code>). A requester can open one of its own

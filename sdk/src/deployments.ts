@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Address } from "viem";
 
@@ -48,4 +48,28 @@ export function loadDeployment(dir: string, chainId: number): Deployment {
 
 export function loadAgents(dir: string, chainId: number): AgentsFile {
   return JSON.parse(readFileSync(join(dir, `${chainId}-agents.json`), "utf8")) as AgentsFile;
+}
+
+/** Shape of contracts/deployments/<chainId>-simulated.json, written by scripts/src/simulator.ts (Phase 6). Everything
+ *  the population simulator puts on-chain is listed here, so the frontend and the demo can label it as SIMULATED. */
+export type SimulatedFile = {
+  note: string;
+  /** Tasks posted by simulated clients (decimal strings). */
+  taskIds: string[];
+  /** Simulated clients' wallets (postTask, markCompleted). */
+  clients: Address[];
+  /** Fresh wallets that sent simulated clients' ratings. */
+  raters: Address[];
+};
+
+const simulatedPath = (dir: string, chainId: number) => join(dir, `${chainId}-simulated.json`);
+
+/** Null when the simulator has not run against this chain's deployment. */
+export function loadSimulated(dir: string, chainId: number): SimulatedFile | null {
+  const p = simulatedPath(dir, chainId);
+  return existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as SimulatedFile) : null;
+}
+
+export function saveSimulated(dir: string, chainId: number, file: SimulatedFile) {
+  writeFileSync(simulatedPath(dir, chainId), JSON.stringify(file, null, 2) + "\n");
 }

@@ -28,6 +28,8 @@
     "./merkle": "./src/merkle.ts",
     "./disclosure": "./src/disclosure.ts",
     "./snark-artifacts": "./src/snarkArtifacts.ts",
-    "./semaphore": "./src/semaphore.ts"
+    "./semaphore": "./src/semaphore.ts",
+    "./semaphore-core": "./src/semaphoreCore.ts",
+    "./snark-pins": "./src/snarkPins.ts"
   }
 }

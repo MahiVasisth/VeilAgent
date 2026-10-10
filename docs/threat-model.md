@@ -1,8 +1,14 @@
 # Veil8004 threat model
 
-Status: Phase 4. This file holds the claims table from docs/SPEC.md and is updated whenever a
-Phase 0 answer or a later decision (docs/phase0.md) changes what can be claimed. The README claims only what this
-table says.
+Status: final for Phase 6 (2026-10-10). This file holds the claims table from docs/SPEC.md and is updated whenever a
+Phase 0 answer or a later decision (docs/phase0.md) changes what can be claimed. The README, the demo (`make demo`,
+step 6) and the frontend's `/claims` page claim only what this table says. The last two read it from this file, and
+`sdk/src/claims.test.ts` checks that the README's copy and the spec's table match it.
+
+Everything demonstrated so far runs locally on Anvil, against a **simulated** DON (the local runner and a
+MockForwarder). No row below has been demonstrated on a real CRE DON. That includes "Validator API credentials hidden",
+which depends on Confidential HTTP: the W1 workflow is written and compiles to WASM, but has not been run under
+`cre workflow simulate` (docs/phase0.md Q9, C-8).
 
 ## Claims and limits
 
@@ -81,9 +87,62 @@ needs no DON: the auditor only reads the chain.
 | Validation input hidden from chain observers (unchanged by disclosure) | the Phase 4 leak scan finds no input or salt on-chain, including the disclosed request's |
 | Forced disclosure by a third party: No | holds against chain observers and the auditor. The caveats are listed below |
 
+## What Phase 5 demonstrates (locally, 2026-10-09)
+
+`make phase5` runs on Anvil with our own Semaphore V4 deployment. W2 receipts come from the local runner (a
+**simulation** of the DON).
+
+| Row | Demonstrated by |
+|---|---|
+| Rater unlinkable to wallet, within the group's anonymity set | `scripts/src/phase5.ts`: ratings are Semaphore proofs sent from fresh wallets. Byte scans of every rating's calldata and logs find no client address and no member's identity commitment, and no identity secret is anywhere on-chain. `AnonymousFeedback.t.sol` (`test_ratingCarriesNoIdentityCommitment`) |
+| Rater actually used the rated agent: partly | `submit` requires `agentInGroup[category][epoch][agentId]`; an agent with no receipt-bearing job in the group cannot be rated (`AgentNotInGroup`) |
+| Individual scores: not hidden | `FeedbackSubmitted` carries the score |
+| Linking through the rating transaction: mitigated by a relayer or fresh wallet | `scripts/src/rater.ts` sends from a fresh wallet by default; the indexer view flags a rating sent from a client's own address |
+| Receipt farming: raised in cost, not eliminated | no receipt without an awarded, completed job with an identity commitment (forged and replayed W2 reports revert) |
+| One rating per client, agent and epoch | Semaphore rejects the reused nullifier (`Semaphore__YouAreUsingTheSameNullifierTwice`); the NullifierRegistry records it across groups |
+
+## What the demo demonstrates (Phase 6, locally, 2026-10-10)
+
+`make demo` runs every flow on one fresh chain, prints each statement and checks it (`scripts/src/demo.ts`, 28 checks),
+then checks all five pages. The population simulator adds **simulated** clients to the client's receipt group
+(6 by default). The `/indexer`, `/auction` and `/costs` pages show a banner and a `simulated` label while simulated
+data is on the chain.
+
+| Row | Demonstrated by |
+|---|---|
+| Simulated clients: disclosed | the demo prints "7 members, 6 of them SIMULATED", every page that shows them carries the banner, and `contracts/deployments/<chainId>-simulated.json` lists each simulated client, task and rater |
+| All rows above | one end-to-end leak scan after the plain baseline: no validation input, credential, salt or losing price in calldata, logs or the full Anvil state |
+
+The demo's anonymity set is 7, and 6 of those are simulated. With only real users, the set would be the number of
+real clients with a receipt in that category and epoch.
+
 ## Adversaries, assets and residual risks
 
-To be completed in Phase 6. Recorded so far:
+### Assets
+
+| Asset | Where it lives | Who can see it |
+|---|---|---|
+| Validation input (e.g. a counterparty name, a credential) | the requester; sealed in the store; decrypted inside W1 | requester, DON nodes (standard workflow), an auditor the requester chooses |
+| Validation salt | the requester; inside the sealed payload | same as the input |
+| Losing bid prices and salts | each bidder; sealed in the store; decrypted inside W3 | that bidder, DON nodes (standard workflow) |
+| Rater identity (which receipt holder rated) | the client's Semaphore identity, kept locally | the client only |
+| Workflow decryption keys, screening API key | CRE secrets (env for the local runner) | the DON (standard workflow); the enclave (confidential) |
+| Sealed-store bearer tokens | CRE secrets | the DON |
+
+### Adversaries
+
+| Adversary | Can | Cannot (as far as the table claims) |
+|---|---|---|
+| **Chain observer / indexer** | read every event, calldata byte and storage slot; label policies and categories by hashing guesses; see who requested, who bid, who won and at what price, which agents were rated with which scores, and the receipt groups' member commitments | recover a validation input or a losing price (salted commitments, 32-byte salts); link a rating to a member of its group |
+| **CRE node operator** (standard workflow) | see every decrypted input and bid inside W1/W3, and the store tokens | forge a result: reports need DON consensus, and the registry re-checks commitment and policy. Rows marked "Only with a Confidential Workflow" do **not** hold against this adversary |
+| **Misbehaving DON / W3** | drop a valid bid or award a higher one; withhold any report | award a winner whose price does not open its commitment; record a result for a commitment it was not given |
+| **Rival bidder** | see which agents bid and when; bid itself if attested | squat another bidder's sealed-store key (P3-2); learn a losing price |
+| **Auditor** | verify the one request disclosed to it and pass the bundle on | open any other request, even with the disclosed salt and a dictionary of every real input (`make phase4`) |
+| **Sealed-store griefer** | upload junk under a fresh requestId first, so W1 stops and the request stays Pending | make a request record a wrong result |
+| **Colluding agent + client** | farm receipts by completing real (cheap) jobs, then rate | rate without a completed, awarded job; rate twice per agent and epoch with one identity |
+| **Stranger** | request validations for any agent (per-request results only); close bidding; anchor; relay ratings | move an agent's attestation (P2-1); unlock TreasuryAction with their own pass (requester check) |
+
+### Residual risks
 
 - **Sealed-store griefing (Phase 2, P2-3).** The store's `PUT` is unauthenticated and keys are write-once, and the
   requestId is public in `PrivateValidationRequested`. An observer can upload junk under a fresh requestId before the
@@ -114,6 +173,36 @@ To be completed in Phase 6. Recorded so far:
   workflow the DON nodes that decrypt W1's payload (the node-operator row). With a Confidential Workflow, only the
   requester. So "forced disclosure by a third party: No" holds against chain observers and auditors, and against node
   operators only with a Confidential Workflow.
+- **The anonymity set is small, and its edges are public (Phase 5).** A rater hides among the clients with a receipt in
+  that category and epoch, and their identity commitments, tasks and agents are all public. If one member rated and only
+  one member hired the rated agent, the "Partly" row lets an observer guess well. Timing helps them too: a rating that
+  lands right after one client's receipt points at that client. Mitigations: pooled groups (wider categories, longer
+  epochs), a relayer that batches submissions, and honesty about the set size (the pages show "one of N").
+- **The rating wallet can link.** A rating sent from the client's own address undoes the proof. The rater tool sends
+  from a fresh wallet funded by the Anvil deployer. On a real chain, funding that wallet is itself a link unless a
+  relayer or a privacy-preserving funding path is used. The indexer view flags ratings sent from a client address.
+- **Simulated members inflate the demo's anonymity set.** They are labeled wherever they appear. They show the
+  mechanism, not real-world anonymity.
+- **Timing and gas metadata.** Transaction timing, gas and the sender's nonce history are public. None of the claims
+  covers them.
+- **Proving artifacts are trusted on first use (S-9).** The zkey hashes are pinned on first download, and each is then
+  checked against the verifier by a real proof. A compromised first download that still verifies would need a
+  compromised trusted setup, which is out of scope.
+- **Admin keys.** Contract owners can change the expected workflow ids, the policy active flags and the nullifier
+  consumers. A malicious owner could pin a workflow that reports anything. Ownership should move to a multisig before
+  any non-demo use.
+- **The app keeps secrets in browser storage.** Salts, bid openings and Semaphore identities sit in the browser's
+  `localStorage` for the app's origin. Anyone with that browser profile, or script running on that origin, can read
+  them. Clearing site data loses them, which makes disclosure and rating impossible. The app offers an export. A
+  hosted deployment would need a strict CSP and should consider encrypting the vault with a key derived from a wallet
+  signature.
+- **The app's server.** It forwards sealed boxes to the store (ciphertext only, sealed in the browser), serves the
+  pinned proving artifacts (the browser checks their SHA-256 before use), and relays rating proofs. A malicious server
+  could serve tampered page code that leaks secrets. That is the usual web-app trust: run it yourself, or serve a
+  pinned build.
+- **The relayer.** It sees a finished proof (public once on-chain) and the request's network origin. It can refuse or
+  delay a rating, but cannot forge, alter or link one. Locally it is Anvil account 9; elsewhere `RELAYER_PRIVATE_KEY`.
+  Without a relayer, the app asks before sending a rating from the user's own wallet, because that links it.
 - **The auditor must pin the registry (Phase 4).** A bundle names its own registry. Unless the auditor compares it with
   the PrivateValidationRegistry it trusts, a look-alike contract could report any result. The auditor CLI and `/audit`
   compare against the deployment file and reject a mismatch.

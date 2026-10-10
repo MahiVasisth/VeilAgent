@@ -449,6 +449,68 @@ Choices made where the spec is silent (none changes a claim):
   `ReceiptGroupManager` (no secrets: W2 reads only public data), and checks inside the delivery queue.
   `cre/workflows/w2-receipt-issuer/main.ts` typechecks and compiles to WASM (2.6 MB). Like W1 and W3, it has **not** been
   run under `cre workflow simulate` (Q1).
+- **P5-12. Client proof tooling.** `sdk/src/semaphore.ts fetchGroup` rebuilds a receipt group from Semaphore's member
+  events and refuses a result whose root differs from the chain's. `scripts/src/rater.ts` keeps the identity in a local
+  file (mode 600), finds the receipt from `ReceiptIssued`, proves offline and submits. By default it sends from a fresh
+  wallet funded by the Anvil deployer, which stands in for a relayer.
+- **P5-13. A repeated rating is stopped by Semaphore first.** The nullifier depends only on the identity and the scope
+  (agent, epoch), so a second rating, even with another score, reverts `Semaphore__YouAreUsingTheSameNullifierTwice`
+  inside `validateProof`, before `NullifierRegistry.consume` runs. The registry still records every accepted nullifier,
+  since the spec has it shared across consumers.
+- **P5-14. Phase 5 exit (2026-10-09).** `make phase5` passes 48/48 on a clean Anvil. Three clients, five tasks: three
+  receipts in one group; a commitment-0 task and an uncompleted one get none, and forged or replayed W2 reports revert.
+  Borealis anchors as 466 (5, 5, 4) and Atlas as 400, both read back with `getSummary`/`readFeedback`. Ratings come from
+  fresh wallets, with no client address or member commitment in their calldata or logs, and no identity secret anywhere
+  on-chain. Each proof takes about 4.4 s under Bun (single-threaded, S-7). The anonymity set is 3.
+- **P5-15. Feedback view.** `/indexer` has a "Ratings, two ways" split. The plain side shows NewFeedback (client, score,
+  payment). The Veil8004 side (`sdk/src/indexer/feedbackView.ts`) shows each rating as "one of N" receipt holders, plus
+  the per-epoch average and its anchor. It flags a rating sent from a client's own address. The averages that
+  AnonymousFeedback anchors are also NewFeedback events, so the page removes them from the plain side and the plain
+  graph. `make phase5` checks the page.
+
+---
+
+## Phase 6 decisions and differences from the spec (2026-10-10)
+
+- **P6-1. The demo checks itself.** `scripts/src/demo.ts` prints the spec's six steps, and every statement it prints is
+  also a check (28 in all). `scripts/demo.sh` then checks the five pages. `make demo` exits non-zero if any check
+  fails, so it doubles as the end-to-end test. One fresh chain, about 70 s; `PAUSE=1` waits between steps.
+- **P6-2. Demo order.** The spec lists private validation (step 3) after the auction. The receipt is issued at the end of
+  step 2, and the simulated population hires right after it, because step 3's expiry check moves the clock an hour. A
+  receipt issued after that move would land in the next epoch's group (P5-6). Ratings for epoch E stay open until
+  `(E + 1) * epochLength + ratingWindow`, so step 5 still falls inside the window.
+- **P6-3. How simulated data is labeled.** The simulator lists every task, client wallet and rating wallet it creates in
+  `contracts/deployments/<chainId>-simulated.json`, writing each entry *before* the transaction is sent. Pages show
+  a banner and per-row `simulated` tags while the file exists. `Deploy.s.sol` deletes it, so a fresh chain at the same
+  addresses never inherits stale labels. Nothing simulated is marked on-chain: a marker would itself be a
+  distinguishing feature inside the anonymity set.
+- **P6-4. The simulator fills receipt groups and does not rate by default.** The anonymity set is the group's
+  membership, and ratings do not change it. Simulated ratings would also mix fictional scores into anchored averages.
+  `--rate` / `RATE=1` turns them on (they are labeled). The group size is capped at 16 members, the largest depth the
+  pinned artifacts cover (S-9).
+  When a demo agent's `QUALIFIED_SCREENER_V1` has lapsed (the demo moves the clock an hour), the simulator renews it
+  through W1 with the agent's fictional credential, signed by the agent's owner, before any simulated bid.
+- **P6-5. Cost panel.** Gas used per transaction, read from receipts of the transactions that emitted each event (one
+  sample per transaction), shown as min, median and max. Gas only, no fee: Anvil's gas price means nothing. Reports
+  delivered through the MockForwarder include its overhead, not the KeystoneForwarder's signature checks, and the page
+  says so. Mirror requests (`validationRequest` naming our registry) and anchored averages are kept out of the plain
+  ERC-8004 rows.
+- **P6-6. One claims table.** The `/claims` page and the demo parse `docs/threat-model.md` (`sdk/src/claims.ts`).
+  `claims.test.ts` fails if the README's copy differs from it, or if any row's "Claimed?" differs from the spec's.
+- **P6-8. A usable app (differs from the spec).** The spec's frontend reads public chain data only, and all actions run
+  through scripts. That left nothing a person could use, so `/app` adds a wallet-connected client: an injected wallet,
+  or Anvil's public demo accounts on a local chain only. Secrets are generated in the browser and kept in a
+  `localStorage` vault scoped to the chain's genesis hash. Sealed boxes go through a same-origin proxy (`/api/store`),
+  so the sealed store needs no CORS. Rating proofs run in a Web Worker using snarkjs's own browser build (served from
+  `node_modules`), with artifacts checked against `PINNED_SHA256` (`sdk/src/snarkPins.ts`). The circuit inputs come
+  from `sdk/src/semaphoreCore.ts`, which the CLI prover shares. Ratings go out through `/api/relay`, which relays
+  `AnonymousFeedback.submit` only. The app warns when the receipt group is too small to be anonymous. `make app` starts
+  the stack without the scripted demo. A headless-Chrome run of the full flow (qualify → post → two sealed bids → W3
+  award → loser inclusion → completion → W2 receipt → in-browser proof → relayed rating → private screening →
+  treasury execute → audit bundle → anchor) passed in about 25 s.
+- **P6-7. Measured on the demo chain** (`make demo`, 2026-10-10, medians): private attestation 301,040 gas (request
+  190,478 + W1 result 110,562) versus plain request + response 320,653; sealed bid 121,640; W3 award 143,260;
+  W2 receipt 212,835; anonymous rating 360,607; anchor 207,534; plain `giveFeedback` 229,132.
 
 ## Pinned versions
 
