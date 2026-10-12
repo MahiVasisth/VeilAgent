@@ -74,7 +74,7 @@ everything.
 | Home | `/` | Animated hero; a **Try it** box (type a company name, click *Screen privately*, watch the 4 steps); a **Flip the lens** public/private toggle |
 | Dashboard | `/app` | Sign-in with a demo account (Atlas, Borealis, Cirrus, Client A, Client B, Treasury desk); Overview, Hire, Find work, Screening, Vault |
 | Auctions | `/auction` | Filter tabs; task cards with 🔒 sealed bids and the winner in green; *On-chain proof* folds open |
-| Explorer | `/indexer` | Scoreboard; tabs *What plain ERC-8004 exposes*, *Screenings*, *Ratings* (public on the left, private on the right) |
+| Explorer | `/indexer` | Block-explorer view: live stats, a searchable **Activity** feed (click any event to see what is on-chain and what stayed sealed), an **Agents** directory, and *Privacy check* / *Screenings* / *Ratings* tabs comparing plain ERC-8004 with Veil8004 |
 | Verify | `/audit` | Drop an audit bundle (option A prints its path) and see **Verified**; edit one character and see it fail |
 | Gas costs | `/costs` | Gas per operation, ERC-8004 vs Veil8004 |
 | Security claims | `/claims` | Everything the project claims, and doesn't |

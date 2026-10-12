@@ -1,9 +1,11 @@
 import { connection } from "next/server";
 import {
   type SimulatedFile,
+  buildAuctionView,
   buildFeedbackView,
   buildPublicGraph,
   buildVeilView,
+  fetchAuctionData,
   fetchFeedbackData,
   fetchPublicData,
   fetchVeilData,
@@ -18,6 +20,8 @@ import { ErrorState, PageHeader, RawFacts } from "../components";
 import { EyeIcon, LockIcon } from "../icons";
 import { LeakGraph } from "./LeakGraph";
 import { Tabs } from "./Tabs";
+import { buildActivity, type ActivityEvent } from "../../lib/activity";
+import { ActivityFeed, AgentDirectory, type AgentRow } from "./ExplorerApp";
 import { DemoInfo, SimDataBanner, SimDonBanner } from "../Nav";
 
 export const metadata = { title: "Explorer" };
@@ -30,6 +34,10 @@ type Loaded = {
   veilRegistry: string | null;
   simulated: boolean;
   sim: SimulatedFile | null;
+  events: ActivityEvent[];
+  agents: AgentRow[];
+  now: number;
+  latestBlock: number;
 };
 
 async function load(): Promise<Loaded | { error: string }> {
@@ -39,15 +47,47 @@ async function load(): Promise<Loaded | { error: string }> {
     // The averages AnonymousFeedback anchors are NewFeedback events too; they belong to the Veil8004 side.
     const anon = d.veil?.anonymousFeedback?.toLowerCase();
     const graph = buildPublicGraph({ ...rawPublic, feedback: rawPublic.feedback.filter((f) => f.client.toLowerCase() !== anon) });
-    const [raw, rawFeedback] = await Promise.all([fetchVeilData(publicClient, d), fetchFeedbackData(publicClient, d)]);
+    const [raw, rawFeedback, rawAuction, block] = await Promise.all([
+      fetchVeilData(publicClient, d),
+      fetchFeedbackData(publicClient, d),
+      fetchAuctionData(publicClient, d),
+      publicClient.getBlock({ blockTag: "latest" }),
+    ]);
     const names = new Map(graph.agents.map((a) => [a.agentId, a.name]));
+    const veil = raw ? buildVeilView(raw, names) : null;
+    const feedback = rawFeedback ? buildFeedbackView(rawFeedback, names) : null;
+    const auction = rawAuction ? buildAuctionView(rawAuction, names) : null;
+    const veilRegistry = d.veil?.privateValidationRegistry ?? null;
+    const events = await buildActivity(publicClient, { graph, rawPublic, rawVeil: raw, veil, rawAuction, auction, rawFeedback, feedback, veilRegistry });
+    const agents: AgentRow[] = graph.agents.map((a) => {
+      const q = veil?.rows.find((r) => r.agentId === a.agentId && r.agentLevel && r.policyName === "QUALIFIED_SCREENER_V1");
+      const agg = (feedback?.aggregates ?? []).filter((x) => x.agentId === a.agentId);
+      const count = agg.reduce((n, x) => n + x.count, 0);
+      const last = events.filter((e) => e.agent === a.name && e.block !== null).map((e) => e.block!);
+      return {
+        id: a.agentId.toString(),
+        name: a.name,
+        owner: a.owner,
+        qualification: !q ? "none" : q.result === "pending" ? "pending" : q.result === "fail" ? "rejected" : q.expired ? "expired" : "qualified",
+        bids: (auction?.tasks ?? []).reduce((n, t) => n + t.bids.filter((b) => b.agentId === a.agentId).length, 0),
+        wins: (auction?.tasks ?? []).filter((t) => t.award?.winnerAgentId === a.agentId).length,
+        plainRatings: graph.feedback.filter((f) => f.agentId === a.agentId).map((f) => Number(f.score)),
+        anonAverage: agg.length ? formatAverage(agg[agg.length - 1]!.anchoredValue ?? agg[agg.length - 1]!.average) : null,
+        anonCount: count,
+        lastBlock: last.length ? Math.max(...last) : null,
+      };
+    });
     return {
       graph,
-      veil: raw ? buildVeilView(raw, names) : null,
-      feedback: rawFeedback ? buildFeedbackView(rawFeedback, names) : null,
-      veilRegistry: d.veil?.privateValidationRegistry ?? null,
+      veil,
+      feedback,
+      veilRegistry,
       simulated: d.veil?.forwarderIsMock ?? false,
       sim: loadSimulated(),
+      events,
+      agents,
+      now: Number(block.timestamp),
+      latestBlock: Number(block.number),
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message.split("\n")[0]! : String(e) };
@@ -60,7 +100,7 @@ export default async function IndexerPage() {
 
   return (
     <main>
-      <PageHeader eyebrow="Explorer" title="What an indexer sees" actions={!("error" in data) && <DemoInfo>
+      <PageHeader eyebrow="Explorer" title="Network explorer" actions={!("error" in data) && <DemoInfo>
             {data.simulated && (
               <SimDonBanner>
                 Veil8004 results on this chain were delivered by the local runner through a MockForwarder, not by a
@@ -69,22 +109,27 @@ export default async function IndexerPage() {
             )}
             <SimDataBanner sim={data.sim} />
 </DemoInfo>}>
-        Rebuilt from public chain data only. If you can read it here, so can anyone.
+        Everything an outside observer can read, rebuilt from public chain data only.
       </PageHeader>
 
       {"error" in data ? (
         <ErrorState error={data.error} hint={<>Start Anvil and run the baseline: <code>make phase1</code>.</>} />
       ) : (
         <>
-          <Scoreboard data={data} />
+          <StatStrip data={data} />
           <Tabs
             tabs={[
-              { id: "exposed", label: "What plain ERC-8004 exposes" },
-              { id: "screenings", label: "Screenings", count: (data.veil?.rows.length ?? 0) + plainOf(data).length },
-              { id: "ratings", label: "Ratings", count: (data.feedback?.ratings.length ?? 0) + data.graph.feedback.length },
+              { id: "activity", label: "Activity", count: data.events.length },
+              { id: "agents", label: "Agents", count: data.agents.length },
+              { id: "exposed", label: "Privacy check" },
+              { id: "screenings", label: "Screenings: public vs private" },
+              { id: "ratings", label: "Ratings: public vs private" },
             ]}
           >
+            <ActivityFeed events={data.events} now={data.now} />
+            <AgentDirectory agents={data.agents} />
             <div>
+              <Scoreboard data={data} />
               <h2 className="section-h first" id="graph">What plain ERC-8004 gives away</h2>
               <p className="sub section-sub">Two ordinary hires, rebuilt by anyone from public events.</p>
               <Graph graph={data.graph} />
@@ -100,6 +145,30 @@ export default async function IndexerPage() {
 
 /** Standard validations, minus the ERC-8004 mirrors of Veil8004 results (those belong to the Veil8004 side). */
 const plainOf = ({ graph, veilRegistry }: Loaded) => graph.validations.filter((v) => v.validator.toLowerCase() !== veilRegistry?.toLowerCase());
+
+/** Network totals, explorer-style. */
+function StatStrip({ data }: { data: Loaded }) {
+  const n = (k: string[]) => data.events.filter((e) => k.includes(e.kind)).length;
+  const stats = [
+    { l: "Latest block", v: data.latestBlock.toLocaleString("en-US") },
+    { l: "Agents", v: data.agents.length },
+    { l: "Transactions", v: new Set(data.events.map((e) => e.txHash)).size },
+    { l: "Screenings", v: n(["screening"]) },
+    { l: "Sealed bids", v: n(["bid"]) },
+    { l: "Ratings", v: n(["rating"]) },
+  ];
+  return (
+    <div className="stat-strip card">
+      {stats.map((s, i) => (
+        <div key={s.l}>
+          <span className="faint">{s.l}</span>
+          <strong className={i === 0 ? "mono" : undefined}>{s.v}</strong>
+        </div>
+      ))}
+      <span className="stat-live"><span className="live" /> Live</span>
+    </div>
+  );
+}
 
 /** The page in one glance: what each side lets an observer read. */
 function Scoreboard({ data }: { data: Loaded }) {
