@@ -12,7 +12,120 @@ KEEP=1 make demo     # same, and leave everything running: http://127.0.0.1:3000
 
 The walkthrough for someone seeing it cold is [docs/demo.md](docs/demo.md).
 
-**Use it yourself:**
+## Quick start: run the frontend and check it
+
+Everything runs on your own machine: a local test chain, two small services, the workflow runner and the website.
+No crypto wallet, no testnet funds and no accounts are needed. Tested on macOS and Linux.
+
+### 1. Install the tools (once)
+
+| Tool | Version | Install |
+|---|---|---|
+| Git | any | usually preinstalled (`git --version`) |
+| Foundry (`forge`, `anvil`, `cast`) | recent | `curl -L https://foundry.paradigm.xyz \| bash`, then open a new terminal and run `foundryup` |
+| Bun | ≥ 1.4.2 | `curl -fsSL https://bun.sh/install \| bash`, then open a new terminal |
+| Node.js | ≥ 22 | [nodejs.org](https://nodejs.org) or `nvm install 22` |
+| `curl`, `openssl`, `make`, `python3` | any | preinstalled on macOS and most Linux distributions |
+
+Check them:
+
+```bash
+forge --version && anvil --version && bun --version && node --version
+```
+
+### 2. Get the code (once)
+
+```bash
+git clone --recurse-submodules https://github.com/MahiVasisth/VeilAgent.git
+cd VeilAgent
+make install          # git submodules + JavaScript packages
+```
+
+If you cloned without `--recurse-submodules`, `make install` fetches the submodules for you.
+
+### 3. Start it
+
+Pick one. Both build everything themselves the first time (a few minutes, and the first run downloads the pinned
+Semaphore proving files, so it needs internet once).
+
+**A. Filled with demo data (best for checking the UI):**
+
+```bash
+KEEP=1 make demo
+```
+
+It runs the scripted demo on a fresh chain (about 70 seconds), checks 28 statements and every page, and then **leaves
+everything running**. When it prints `Demo complete.`, open **http://localhost:3000**. The last lines print the
+process ids to stop it (`Stop with: kill …`) and the path of an audit bundle you can try on the Verify page.
+
+**B. Empty, to click through the whole flow yourself:**
+
+```bash
+make app
+```
+
+When it prints `Veil8004 is running`, open **http://localhost:3000/app**. Press `Ctrl-C` in that terminal to stop
+everything.
+
+### 4. What to check
+
+| Page | URL | What you should see |
+|---|---|---|
+| Home | `/` | Animated hero; a **Try it** box (type a company name, click *Screen privately*, watch the 4 steps); a **Flip the lens** public/private toggle |
+| Dashboard | `/app` | Sign-in with a demo account (Atlas, Borealis, Cirrus, Client A, Client B, Treasury desk); Overview, Hire, Find work, Screening, Vault |
+| Auctions | `/auction` | Filter tabs; task cards with 🔒 sealed bids and the winner in green; *On-chain proof* folds open |
+| Explorer | `/indexer` | Scoreboard; tabs *What plain ERC-8004 exposes*, *Screenings*, *Ratings* (public on the left, private on the right) |
+| Verify | `/audit` | Drop an audit bundle (option A prints its path) and see **Verified**; edit one character and see it fail |
+| Gas costs | `/costs` | Gas per operation, ERC-8004 vs Veil8004 |
+| Security claims | `/claims` | Everything the project claims, and doesn't |
+
+The small **Demo network** chip on each page explains what is simulated on this local chain.
+
+### 5. Try the full flow in the app (with option B, or on top of A)
+
+You play several people. Switch accounts with the icon at the top right of the dashboard.
+
+| # | Sign in as | Tab | Do |
+|---|---|---|---|
+| 1 | **Atlas** | Find work | Credential `QS-2026-0417` → **Get qualified** |
+| 2 | **Borealis** | Find work | Credential `QS-2026-0582` → **Get qualified** |
+| 3 | **Client A** | Hire | **Post task** (Sanctions screening, 10 min) |
+| 4 | **Atlas**, then **Borealis** | Find work | Type a price on the open task → **Place sealed bid** |
+| 5 | anyone | sidebar | Click **+10m** to pass the deadline, then **Close bidding** (Hire tab); the lowest bid wins |
+| 6 | **Client A** | Hire | **Mark job completed**, wait a few seconds, then **Rate anonymously** |
+| 7 | **Treasury desk** | Screening | Screen `Northwind Trading LLC` → **Export for audit**, then drop the file on **Verify** |
+
+After each step, open **Auctions** or **Explorer** to see what the public sees. Fictional test data: the sanctions list
+flags *Kestrel Shipping Co*, *Blackfin Holdings Ltd* and *Orrin Maritime SA*; valid credentials are
+`QS-2026-0417`, `-0582`, `-0733` and `-0901`.
+
+### 6. Editing the frontend (optional)
+
+With option A running, stop its production web server and start the dev server, which reloads on every save:
+
+```bash
+pkill -f next-server                                  # stops only the website; the chain and services keep running
+set -a; source <the public-keys.env path the demo printed>; set +a
+cd frontend && bun run dev                            # http://localhost:3000
+```
+
+Without the `source` line everything works except sealing to the real workflow keys, so posting screenings and bids
+from the app fails, and the home page's *Try it* box seals to a throwaway key instead.
+
+Run `bun run build` in `frontend/` before committing to catch type errors, and `make demo` to re-run every page check.
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `something is already listening on http://127.0.0.1:8545` or `… is in use` | An earlier run is still going. Stop it with the `kill …` line it printed, or `pkill anvil; pkill -f next-server; pkill -f sealed-store; pkill -f mock-screening; pkill -f local-runner` |
+| Page says **We couldn't reach the network** | The chain isn't running. Start it again with step 3 |
+| `missing anvil` / `missing bun` | Install the tool from step 1 and open a new terminal |
+| Demo accounts don't appear on the sign-in screen | They only show on the local chain (31337). Make sure you started it with step 3 |
+| The data is gone after a restart | Expected: every run starts a fresh chain. Use option A again for demo data |
+| Proving files fail to download | Check your internet connection and run `make artifacts` once |
+
+## What the app does, and what is simulated
 
 ```bash
 make app             # fresh local chain + everything running; open http://127.0.0.1:3000/app (Ctrl-C stops)
@@ -22,7 +135,7 @@ The app at `/app` lets you act as an agent owner, a client or the treasury, with
 `http://127.0.0.1:8545`, chain 31337) or one of the labeled local demo accounts. You can get an agent qualified,
 post a task, place sealed bids, close bidding, mark a job completed, rate anonymously, screen a counterparty privately,
 execute the gated treasury action, and download an audit bundle. Salts, bid prices and rating identities are created
-in your browser and kept in its local storage (exportable under "My secrets"). Rating proofs are generated in your
+in your browser and kept in its local storage (exportable under "Vault"). Rating proofs are generated in your
 browser. The app's server only forwards ciphertext to the sealed store and relays finished rating proofs.
 
 **What is simulated or mocked, everywhere in this repo:**
@@ -32,7 +145,7 @@ browser. The app's server only forwards ciphertext to the sealed store and relay
   to WASM, but have not been run under `cre workflow simulate` or deployed.
 - **The screening provider.** A mock API with a fictional hit list and a fictional credential list.
 - **Part of the anonymity set.** The population simulator (`scripts/src/simulator.ts`) adds simulated clients so
-  that a receipt group is not one person. Pages show a banner and a `simulated` label while its data is on the chain.
+  that a receipt group is not one person. Pages note it under the **Demo network** chip and label its rows `simulated` while its data is on the chain.
 - **All names, counterparties, credentials and prices** are fictional demo data.
 
 Input hiding from CRE node operators needs a Confidential Workflow, and is **designed, not demoed**. So is the hiding
@@ -216,6 +329,6 @@ cre/         handlers/ (pure), workflows/ (CRE wiring), local-runner/ (DON simul
 services/    sealed-store/, mock-screening/ (MOCK)
 sdk/         commitments, seal, bids, merkle, disclosure, semaphore, claims, indexer views
 scripts/     client, bidder, auditor, rater, demo, simulator, deploy-testnet, phase exit checks
-frontend/    indexer split view, auction view, audit, cost panel, claims
+frontend/    home (live demos), app dashboard, auctions, explorer (indexer view), verify (audit), costs, claims
 docs/        SPEC.md, phase0.md, threat-model.md, extension-draft.md, demo.md, writeup.md, submission.md
 ```
