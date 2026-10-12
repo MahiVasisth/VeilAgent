@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { download, updateVault, type Vault } from "../../lib/app/vault";
-import { Explain } from "./ui";
+import { CardHead } from "./ui";
 import type { Veil } from "./useVeil";
 
 export function SecretsSection({ veil }: { veil: Veil }) {
@@ -10,19 +10,18 @@ export function SecretsSection({ veil }: { veil: Veil }) {
   const [msg, setMsg] = useState<string | null>(null);
   return (
     <section className="card" data-testid="secrets">
-      <h2>My secrets (this browser only)</h2>
-      <Explain>
-        These never leave this browser unless you export them. Without a request's input and salt you cannot disclose it
-        to an auditor; without a task's identity you cannot rate the agent. Clearing site data deletes them.
-      </Explain>
-      <ul>
-        <li>{vault.openings.length} validation opening{vault.openings.length === 1 ? "" : "s"} (input + salt)</li>
-        <li>{vault.bids.length} bid opening{vault.bids.length === 1 ? "" : "s"} (price + salt)</li>
-        <li>{vault.identities.length} anonymous identit{vault.identities.length === 1 ? "y" : "ies"} (one per task)</li>
-      </ul>
+      <CardHead
+        title="Stored in this browser"
+        sub="Your keys live only in this browser. Export a backup before clearing site data."
+      />
+      <div className="kpis">
+        <div className="kpi static"><span className="n">{vault.openings.length}</span><span className="l">Screening keys</span></div>
+        <div className="kpi static"><span className="n">{vault.bids.length}</span><span className="l">Bid keys</span></div>
+        <div className="kpi static"><span className="n">{vault.identities.length}</span><span className="l">Anonymous identities</span></div>
+      </div>
       <div className="actions">
-        <button onClick={() => download(`veil8004-secrets-${scope.split(":")[0]}.json`, JSON.stringify({ scope, ...vault }, null, 2))}>Export all</button>
-        <button onClick={() => file.current?.click()}>Import…</button>
+        <button className="primary" onClick={() => download(`veil8004-secrets-${scope.split(":")[0]}.json`, JSON.stringify({ scope, ...vault }, null, 2))}>Export backup</button>
+        <button onClick={() => file.current?.click()}>Restore from file…</button>
         <input
           ref={file}
           type="file"
@@ -41,7 +40,7 @@ export function SecretsSection({ veil }: { veil: Veil }) {
                 v.identities = merge(v.identities, imported.identities, (x) => x.commitment);
               });
               veil.reloadVault();
-              setMsg("Imported.");
+              setMsg("Backup restored.");
             } catch (err) {
               setMsg(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
             }

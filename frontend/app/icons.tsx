@@ -23,3 +23,7 @@ export const WalletIcon = ({ size }: P) => svg(<><path d="M3 7a2 2 0 0 1 2-2h13v
 export const ClockIcon = ({ size }: P) => svg(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>, size);
 export const ArrowIcon = ({ size }: P) => svg(<path d="M5 12h14M13 6l6 6-6 6" />, size);
 export const CheckIcon = ({ size }: P) => svg(<path d="M5 12l5 5L20 7" />, size);
+export const GridIcon = ({ size }: P) => svg(<><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>, size);
+export const ChevronIcon = ({ size }: P) => svg(<path d="M9 6l6 6-6 6" />, size);
+export const LogoutIcon = ({ size }: P) => svg(<><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" /><path d="M10 17l-5-5 5-5M5 12h11" /></>, size);
+export const FastForwardIcon = ({ size }: P) => svg(<path d="M4 6l8 6-8 6V6zM13 6l8 6-8 6V6z" />, size);

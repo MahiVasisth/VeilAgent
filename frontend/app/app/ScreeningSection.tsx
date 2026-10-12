@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Hex } from "viem";
 import { ShieldIcon } from "../icons";
 import { downloadBundle, executeTreasury, requestPrivateValidation } from "../../lib/app/actions";
-import { ctxOf, Explain, Pill, short, useRun, when } from "./ui";
+import { CardHead, ctxOf, label, Pill, relative, short, useRun, when } from "./ui";
 import type { Veil } from "./useVeil";
 
 const POLICIES = [
@@ -24,21 +24,21 @@ export function ScreeningSection({ veil }: { veil: Veil }) {
   const isOperator = d.veil?.treasuryOperator.toLowerCase() === signer!.address.toLowerCase();
 
   return (
-    <section className="card" data-testid="screening">
-      <h2>Screen privately</h2>
-      <Explain>
-        Ask the validator (workflow W1) to check something about an agent without publishing it. The chain gets a salted
-        commitment; W1 gets a copy sealed to its key; the input and salt stay in this browser. The result (pass or fail)
-        is public.
-      </Explain>
+    <div className="stack" data-testid="screening">
+      <Status />
+      <section className="card">
+      <CardHead
+        title="New screening"
+        sub="Only a fingerprint and pass/fail go on-chain."
+      />
       <form
         className="form-grid"
         onSubmit={(e) => {
           e.preventDefault();
-          run("request", "Committing on-chain, then sealing your input to W1…", async () => {
+          run("request", "Encrypting and submitting your request…", async () => {
             const id = await requestPrivateValidation(ctxOf(veil), { agentId: BigInt(agentId), policy, input: input.trim() });
             setInput("");
-            return `Requested ${short(id)}. Waiting for W1's result below (a few seconds).`;
+            return `Screening ${short(id)} submitted. The result appears below in a few seconds.`;
           });
         }}
       >
@@ -53,40 +53,41 @@ export function ScreeningSection({ veil }: { veil: Veil }) {
           </select>
         </label>
         <label>
-          Policy
+          Check
           <select value={policy} onChange={(e) => setPolicy(e.target.value as typeof policy)}>
             {POLICIES.map((x) => (
-              <option key={x.name}>{x.name}</option>
+              <option key={x.name} value={x.name}>{label(x.name)}</option>
             ))}
           </select>
         </label>
         <label className="wide">
           <span>
-            {p.input} <span className="sub">(stays in this browser)</span>
+            {p.input} <span className="faint">· private</span>
           </span>
           <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={p.placeholder} required maxLength={200} />
         </label>
         <button type="submit" disabled={!!busy || !input.trim()}>
-          <ShieldIcon size={16} /> Commit and request
+          <ShieldIcon size={16} /> Run screening
         </button>
       </form>
       {veil.config.local && (
-        <p className="sub">
-          Mock provider (fictional): <em>Kestrel Shipping Co</em>, <em>Blackfin Holdings Ltd</em> and <em>Orrin Maritime SA</em> are
-          on the sanctions list; credentials <em>QS-2026-0417</em>, <em>-0582</em>, <em>-0733</em> and <em>-0901</em> are qualified.
-          Only a request by the agent's owner changes the agent's own qualification.
+        <p className="fine">
+          Try it (fictional test data): <em>Kestrel Shipping Co</em>, <em>Blackfin Holdings Ltd</em> and <em>Orrin Maritime SA</em> are
+          on the sanctions list; credentials <em>QS-2026-0417</em>, <em>-0582</em>, <em>-0733</em> and <em>-0901</em> are valid.
+          Only the agent's owner can change the agent's own qualification.
         </p>
       )}
-      <Status />
+      </section>
 
-      <h3>My requests</h3>
+      <section className="card">
+      <CardHead title="Your screenings" sub="Only visible to you, in this browser." />
       {mine.length === 0 ? (
-        <p className="empty">No requests from this account in this browser yet.</p>
+        <p className="empty">You haven't run any screenings yet.</p>
       ) : (
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Request</th><th>Agent</th><th>Policy</th><th>Your input (local only)</th><th>Result (public)</th><th></th></tr>
+              <tr><th>Request</th><th>Agent</th><th>Check</th><th>What you checked</th><th>Result</th><th></th></tr>
             </thead>
             <tbody>
               {mine.map((o) => {
@@ -96,28 +97,28 @@ export function ScreeningSection({ veil }: { veil: Veil }) {
                   <tr key={o.requestId} data-testid="my-request">
                     <td className="mono">{short(o.requestId)}</td>
                     <td>{r?.agentName ?? `#${o.agentId}`}</td>
-                    <td>{o.policy}</td>
+                    <td title={o.policy}>{label(o.policy)}</td>
                     <td className="sealed">{o.input}</td>
                     <td>
-                      {!r ? "…" : r.result === "pending" ? <Pill value="pending">pending · W1</Pill> : r.expired ? <Pill value="neutral">{r.result} · expired</Pill> : <Pill value={r.result} />}
-                      {r?.expiry ? <div className="sub">until {when(r.expiry)}</div> : null}
+                      {!r ? "…" : r.result === "pending" ? <Pill value="pending">Checking…</Pill> : r.expired ? <Pill value="neutral">{r.result} · expired</Pill> : <Pill value={r.result} />}
+                      {r?.expiry && !r.expired ? <div className="sub" title={when(r.expiry)}>valid {relative(r.expiry, data!.now).replace("in ", "for ")}</div> : null}
                     </td>
                     <td className="actions">
                       <button className="small" disabled={!!busy} onClick={() => run(o.requestId, "Building the bundle…", async () => {
                         await downloadBundle(ctxOf(veil), o.requestId as Hex);
-                        return "Bundle downloaded. It holds this request's salt: give it only to your auditor (they can check it on the Audit page).";
+                        return "Audit bundle downloaded. It reveals this one screening, so share it only with your auditor.";
                       })}>
-                        Audit bundle
+                        Export for audit
                       </button>
                       {isOperator && o.policy === "SANCTIONS_SCREEN_V1" && pass && !r!.treasuryExecuted && (
                         <button className="small" disabled={!!busy} onClick={() => run(o.requestId + "x", "Executing…", async () => {
                           await executeTreasury(ctxOf(veil), o.requestId as Hex);
-                          return "Treasury action executed (gated on this exact result).";
+                          return "Payout executed. It was allowed because this screening passed.";
                         })}>
-                          Execute treasury action
+                          Execute payout
                         </button>
                       )}
-                      {r?.treasuryExecuted && <span className="sub">treasury executed</span>}
+                      {r?.treasuryExecuted && <span className="pill pass">Payout executed</span>}
                     </td>
                   </tr>
                 );
@@ -126,6 +127,7 @@ export function ScreeningSection({ veil }: { veil: Veil }) {
           </table>
         </div>
       )}
-    </section>
+      </section>
+    </div>
   );
 }

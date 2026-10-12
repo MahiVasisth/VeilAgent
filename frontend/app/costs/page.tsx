@@ -1,7 +1,10 @@
 import { connection } from "next/server";
 import { buildCostView, fetchCostData, formatGas, type CostView } from "@veil8004/sdk";
-import { deployment, publicClient, RPC_URL, simulated as loadSimulated } from "../../lib/chain";
-import { SimDataBanner } from "../Nav";
+import { deployment, publicClient, simulated as loadSimulated } from "../../lib/chain";
+import { EmptyState, ErrorState, PageHeader } from "../components";
+import { DemoInfo, SimDataBanner, SimDonBanner } from "../Nav";
+
+export const metadata = { title: "Gas costs" };
 
 async function load(): Promise<{ view: CostView; sim: ReturnType<typeof loadSimulated> } | { error: string }> {
   try {
@@ -16,37 +19,39 @@ export default async function CostsPage() {
   const data = await load();
   return (
     <main>
-      <h1>Cost panel</h1>
-      <p className="lede">
-        Gas used per operation on local Anvil (<code>{RPC_URL}</code>), measured from the receipts of the transactions that
-        emitted each public event. Gas only: what a unit of gas costs depends on the chain.
-      </p>
+      <PageHeader eyebrow="Transparency" title="What privacy costs in gas" actions={!("error" in data) && <DemoInfo>
+            {data.view.forwarderIsMock && (
+              <SimDonBanner>
+                W1, W3 and W2 results were delivered through the MockForwarder, so their gas includes its overhead, not the
+                CRE KeystoneForwarder's (which also verifies DON signatures).
+              </SimDonBanner>
+            )}
+            <SimDataBanner sim={data.sim} />
+</DemoInfo>}>
+        Gas per operation, measured from real transactions on this network.
+      </PageHeader>
       {"error" in data ? (
-        <div className="card error">
-          <strong>Could not read the chain.</strong> {data.error}
-          <p>
-            Run <code>KEEP=1 make demo</code>.
-          </p>
-        </div>
+        <ErrorState error={data.error} hint={<>Run <code>KEEP=1 make demo</code>.</>} />
       ) : (
         <>
-          <SimDataBanner sim={data.sim} />
-          {data.view.forwarderIsMock && (
-            <p className="sim-banner" data-testid="sim-banner">
-              <strong>Simulated DON.</strong> W1, W3 and W2 results were delivered through the MockForwarder, so their gas
-              includes its overhead, not the CRE KeystoneForwarder's (which also verifies DON signatures).
-            </p>
-          )}
-          <div className="totals">
-            <div className="card">
-              <div className="sub">One private attestation (request + W1 result, medians)</div>
-              <div className="big" data-testid="attestation-total">
-                {data.view.attestationTotal === null ? "not measured yet" : `${formatGas(data.view.attestationTotal)} gas`}
-              </div>
+          <div className="kpis page-kpis">
+            <div className="kpi static">
+              <span className="n" data-testid="attestation-total">
+                {data.view.attestationTotal === null ? "—" : `${formatGas(data.view.attestationTotal)}`}
+              </span>
+              <span className="l">Gas for one private attestation (request + result, medians)</span>
+            </div>
+            <div className="kpi static">
+              <span className="n">{data.view.rows.length}</span>
+              <span className="l">Operations measured</span>
+            </div>
+            <div className="kpi static">
+              <span className="n">{data.view.rows.reduce((n, r) => n + r.count, 0)}</span>
+              <span className="l">Transactions sampled</span>
             </div>
           </div>
           {data.view.rows.length === 0 ? (
-            <div className="card">No transactions yet.</div>
+            <EmptyState title="No transactions yet" />
           ) : (
             <div className="card table-wrap">
               <table>
@@ -59,9 +64,9 @@ export default async function CostsPage() {
                 <tbody>
                   {data.view.rows.map((r) => (
                     <tr key={r.op} data-testid="cost-row">
-                      <td className={r.side === "plain" ? "side-plain" : "side-veil"}>{r.side === "plain" ? "ERC-8004" : "Veil8004"}</td>
-                      <td>{r.label}</td>
-                      <td className="mono">{r.what}</td>
+                      <td><span className={`pill ${r.side === "plain" ? "leak" : "sealed"}`}>{r.side === "plain" ? "ERC-8004" : "Veil8004"}</span></td>
+                      <td><strong>{r.label}</strong></td>
+                      <td className="mono faint">{r.what}</td>
                       <td className="num">{r.count}</td>
                       <td className="num">{formatGas(r.min)}</td>
                       <td className="num">{formatGas(r.median)}</td>
@@ -72,7 +77,7 @@ export default async function CostsPage() {
               </table>
             </div>
           )}
-          <p className="sub">
+          <p className="fine">
             A rating's gas is dominated by the on-chain Groth16 check in Semaphore. A receipt's grows with the group's
             Merkle tree. Proving a rating happens off-chain on the client and costs no gas.
           </p>

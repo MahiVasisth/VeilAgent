@@ -1,7 +1,10 @@
 import { connection } from "next/server";
 import { fetchAuctionData, fetchFeedbackData, fetchPublicData, fetchVeilData } from "@veil8004/sdk";
 import { deployment, publicClient } from "../lib/chain";
-import { ArrowIcon, EyeIcon, FileCheckIcon, GavelIcon, LockIcon, ShieldIcon, StarIcon } from "./icons";
+import { LivePreview } from "./home/LivePreview";
+import { Playground } from "./home/Playground";
+import { ViewToggle } from "./home/ViewToggle";
+import { ArrowIcon, CheckIcon, EyeIcon, FileCheckIcon, GavelIcon, LockIcon, ShieldIcon, StarIcon } from "./icons";
 
 async function stats() {
   try {
@@ -13,10 +16,10 @@ async function stats() {
       fetchFeedbackData(publicClient, d),
     ]);
     return [
-      { n: pub.registered.length, l: "ERC-8004 agents registered" },
-      { n: veil?.requested.length ?? 0, l: "private validations" },
-      { n: auction?.bids.length ?? 0, l: "sealed bids, prices off-chain" },
-      { n: feedback?.ratings.length ?? 0, l: "anonymous ratings" },
+      { n: pub.registered.length, l: "Agents registered" },
+      { n: veil?.requested.length ?? 0, l: "Private screenings" },
+      { n: auction?.bids.length ?? 0, l: "Sealed bids placed" },
+      { n: feedback?.ratings.length ?? 0, l: "Anonymous ratings" },
     ];
   } catch {
     return null;
@@ -24,143 +27,105 @@ async function stats() {
 }
 
 const FEATURES = [
-  {
-    icon: <ShieldIcon />,
-    title: "Private validation",
-    text: "Commit to the input on-chain, seal it to a Chainlink CRE workflow, and get back only pass or fail. Any contract can gate on the result.",
-    href: "/app",
-    more: "Screen a counterparty",
-  },
-  {
-    icon: <GavelIcon />,
-    title: "Sealed-bid hiring",
-    text: "Only attested agents may bid. Prices stay sealed; the workflow awards the lowest and losers can prove their bid was counted.",
-    href: "/auction",
-    more: "See an auction",
-  },
-  {
-    icon: <FileCheckIcon />,
-    title: "Selective disclosure",
-    text: "Open exactly one validation to an auditor, who verifies it against the chain with reads only. Everything else stays sealed.",
-    href: "/audit",
-    more: "Verify a bundle",
-  },
-  {
-    icon: <StarIcon />,
-    title: "Anonymous feedback",
-    text: "A completed job earns a Semaphore receipt. Rate the agent as one of the group, then anchor the average into ERC-8004.",
-    href: "/indexer",
-    more: "Compare the ratings",
-  },
+  { icon: <ShieldIcon />, title: "Screen privately", text: "Check a counterparty. Publish only pass or fail.", href: "/app", more: "Open the app" },
+  { icon: <GavelIcon />, title: "Hire by sealed bid", text: "Lowest price wins. Losing bids stay sealed.", href: "/auction", more: "See live tasks" },
+  { icon: <FileCheckIcon />, title: "Prove it to an auditor", text: "Open one screening. Keep the rest sealed.", href: "/audit", more: "Verify a bundle" },
+  { icon: <StarIcon />, title: "Rate anonymously", text: "Rate as one of the clients, never which one.", href: "/indexer", more: "Compare ratings" },
 ];
 
 export default async function Home() {
   await connection();
   const s = await stats();
   return (
-    <main>
+    <main className="home">
       <section className="hero">
-        <span className="eyebrow">
-          <LockIcon size={14} /> <b>ERC-8004</b> · Chainlink CRE · Semaphore · Monad
-        </span>
-        <h1>
-          Hire AI agents <span className="grad">without telling the world</span>
-        </h1>
-        <p>
-          ERC-8004 puts every agent interaction in public: who hired whom, what was screened, what it cost, how it was rated.
-          Veil8004 keeps it composable and takes the sensitive parts off-chain.
-        </p>
-        <div className="cta">
-          <a className="btn primary" href="/app">
-            Launch the app <ArrowIcon size={16} />
-          </a>
-          <a className="btn" href="/indexer">
-            <EyeIcon size={16} /> See what an indexer sees
-          </a>
+        <div className="hero-copy">
+          <span className="eyebrow">
+            <LockIcon size={14} /> Private by default · built on <b>ERC-8004</b>
+          </span>
+          <h1>
+            Hire AI agents <span className="grad">without broadcasting your business</span>
+          </h1>
+          <p>Screen, hire and rate agents on-chain. The public sees the outcome, not your secrets.</p>
+          <div className="cta">
+            <a className="btn primary" href="/app">
+              Get started <ArrowIcon size={16} />
+            </a>
+            <a className="btn" href="#try">
+              Try it in 10 seconds
+            </a>
+          </div>
+          <ul className="hero-points">
+            <li><CheckIcon size={14} /> Just a wallet</li>
+            <li><CheckIcon size={14} /> Secrets stay in your browser</li>
+          </ul>
         </div>
-        {s && (
+        <LivePreview />
+      </section>
+
+      {s && (
+        <section className="stats-band" aria-label="Live network activity">
+          <span className="stats-label"><span className="live" /> Live on this network</span>
           <div className="stats">
             {s.map((x) => (
-              <div key={x.l} className="card stat">
+              <div key={x.l} className="stat">
                 <div className="n">{x.n}</div>
                 <div className="l">{x.l}</div>
               </div>
             ))}
           </div>
-        )}
+        </section>
+      )}
+
+      <section id="try" className="home-section">
+        <div className="section-title">
+          <span className="page-eyebrow">Try it</span>
+          <h2>Screen a company. Watch what goes public.</h2>
+        </div>
+        <Playground />
       </section>
 
-      <div className="section-title">
-        <h2>The same job, two ways</h2>
-        <p>What any chain observer can read. Example data is fictional.</p>
-      </div>
-      <div className="compare">
-        <div className="card plain">
-          <h3>
-            <span className="pill leak">public</span> Plain ERC-8004
-          </h3>
-          <ul>
-            <li><span className="k">Screened</span><span className="v">"Northwind Trading LLC" → pass</span></li>
-            <li><span className="k">Paid</span><span className="v">client 0x15d3… → Atlas, 0.05 ETH</span></li>
-            <li><span className="k">Bids</span><span className="v">every price, in the clear</span></li>
-            <li><span className="k">Rated</span><span className="v">client 0x15d3… gave Atlas 90</span></li>
-          </ul>
+      <section className="home-section lens-section">
+        <div className="section-title">
+          <span className="page-eyebrow">Flip the lens</span>
+          <h2>One hire, two chains</h2>
         </div>
-        <div className="card veiled">
-          <h3>
-            <span className="pill sealed">private</span> Veil8004
-          </h3>
-          <ul>
-            <li><span className="k">Screened</span><span className="v">commitment 0x7f56… → pass</span></li>
-            <li><span className="k">Hired</span><span className="v">winner and winning price only</span></li>
-            <li><span className="k">Bids</span><span className="v">losing prices never on-chain</span></li>
-            <li><span className="k">Rated</span><span className="v">5/5 from one of 7 receipt holders</span></li>
-          </ul>
+        <ViewToggle />
+      </section>
+
+      <section className="home-section">
+        <div className="section-title">
+          <span className="page-eyebrow">In the app</span>
+          <h2>Four things you can do today</h2>
         </div>
-      </div>
-
-      <div className="section-title">
-        <h2>Four building blocks</h2>
-        <p>One shared primitive: a salted commitment on-chain, the opening sealed to a workflow, a signed result back.</p>
-      </div>
-      <div className="features">
-        {FEATURES.map((f) => (
-          <a key={f.title} href={f.href} className="card feature">
-            <span className="icon">{f.icon}</span>
-            <h3>{f.title}</h3>
-            <p>{f.text}</p>
-            <span className="more">
-              {f.more} →
-            </span>
-          </a>
-        ))}
-      </div>
-
-      <div className="section-title">
-        <h2>How a private validation works</h2>
-        <p>Secrets are made in your browser and only leave it sealed.</p>
-      </div>
-      <div className="steps">
-        <div className="card"><h3>Commit</h3><p>Your browser salts and hashes the input. Only the commitment goes on-chain.</p></div>
-        <div className="card"><h3>Seal</h3><p>The input and salt are sealed to the workflow's public key and stored as ciphertext.</p></div>
-        <div className="card"><h3>Decide</h3><p>The CRE workflow opens it, checks it matches the commitment, and calls the screening API.</p></div>
-        <div className="card"><h3>Gate</h3><p>The result lands through the forwarder. Contracts gate on it with one modifier.</p></div>
-      </div>
-
-      <div className="section-title">
-        <h2>Honest about the limits</h2>
-        <p>
-          Winners, scores and who bid stay public. Hiding inputs from node operators needs a Confidential Workflow. This demo
-          runs a simulated DON.{" "}
-          <a href="/claims">Read every claim and limit →</a>
-        </p>
-        <div className="stack-row">
-          <span>Solidity 0.8.26 · Foundry</span>
-          <span>Chainlink CRE workflows</span>
-          <span>Semaphore V4 proofs in the browser</span>
-          <span>Monad testnet deploy rehearsed</span>
+        <div className="features">
+          {FEATURES.map((f) => (
+            <a key={f.title} href={f.href} className="card feature">
+              <span className="icon">{f.icon}</span>
+              <h3>{f.title}</h3>
+              <p>{f.text}</p>
+              <span className="more">
+                {f.more} <ArrowIcon size={14} />
+              </span>
+            </a>
+          ))}
         </div>
-      </div>
+      </section>
+
+      <section className="cta-band">
+        <div>
+          <h2>See it end to end</h2>
+          <p>Pick a demo account, post a task, bid, hire and rate in about two minutes.</p>
+        </div>
+        <div className="cta">
+          <a className="btn primary" href="/app">Launch the app <ArrowIcon size={16} /></a>
+          <a className="btn" href="/indexer"><EyeIcon size={16} /> What the public sees</a>
+        </div>
+      </section>
+
+      <p className="limits">
+        Demo network with a simulated Chainlink DON. <a href="/claims">What we claim, and what we don't →</a>
+      </p>
     </main>
   );
 }

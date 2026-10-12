@@ -3,12 +3,10 @@ import { usePathname } from "next/navigation";
 import { LogoMark } from "./icons";
 
 const LINKS = [
-  ["/app", "App"],
-  ["/indexer", "Indexer view"],
+  ["/app", "Dashboard"],
   ["/auction", "Auctions"],
-  ["/audit", "Audit"],
-  ["/costs", "Costs"],
-  ["/claims", "Claims"],
+  ["/indexer", "Explorer"],
+  ["/audit", "Verify"],
 ] as const;
 
 export function SiteHeader() {
@@ -28,8 +26,13 @@ export function SiteHeader() {
           ))}
         </nav>
         <span className="net-chip" title="Workflow results come from the local runner, a simulation of the Chainlink DON">
-          <span className="live" /> Local chain · simulated DON
+          <span className="live" /> Local network
         </span>
+        {path !== "/app" && (
+          <a href="/app" className="btn primary">
+            Launch app
+          </a>
+        )}
       </div>
     </header>
   );
@@ -39,10 +42,25 @@ export function SiteFooter() {
   return (
     <footer className="site-footer">
       <div className="inner">
-        <span>Veil8004: private attestations for ERC-8004 agents. Demo data is fictional.</span>
-        <span>
-          ERC-8004 · Chainlink CRE · Semaphore V4 · Monad · <a href="/claims">what we claim</a>
-        </span>
+        <div className="footer-brand">
+          <a href="/" className="brand" aria-label="Veil8004 home">
+            <span className="brand-mark"><LogoMark /></span>
+            Veil8004
+          </a>
+          <p>Private hiring, screening and ratings for ERC-8004 agents. Demo data is fictional.</p>
+        </div>
+        <nav aria-label="Product">
+          <strong>Product</strong>
+          <a href="/app">Dashboard</a>
+          <a href="/auction">Auctions</a>
+          <a href="/audit">Verify a disclosure</a>
+        </nav>
+        <nav aria-label="Transparency">
+          <strong>Transparency</strong>
+          <a href="/indexer">Explorer</a>
+          <a href="/costs">Gas costs</a>
+          <a href="/claims">Security claims</a>
+        </nav>
       </div>
     </footer>
   );
