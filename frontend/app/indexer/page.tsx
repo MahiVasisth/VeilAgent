@@ -14,7 +14,7 @@ import {
   type PublicGraph,
   type VeilView,
 } from "@veil8004/sdk";
-import { deployment, publicClient, simulated as loadSimulated } from "../../lib/chain";
+import { chainNow, deployment, publicClient, simulated as loadSimulated } from "../../lib/chain";
 import { avatarStyle, label, plural, short } from "../../lib/format";
 import { ErrorState, PageHeader, RawFacts } from "../components";
 import { EyeIcon, LockIcon } from "../icons";
@@ -47,11 +47,12 @@ async function load(): Promise<Loaded | { error: string }> {
     // The averages AnonymousFeedback anchors are NewFeedback events too; they belong to the Veil8004 side.
     const anon = d.veil?.anonymousFeedback?.toLowerCase();
     const graph = buildPublicGraph({ ...rawPublic, feedback: rawPublic.feedback.filter((f) => f.client.toLowerCase() !== anon) });
-    const [raw, rawFeedback, rawAuction, block] = await Promise.all([
+    const [raw, rawFeedback, rawAuction, block, now] = await Promise.all([
       fetchVeilData(publicClient, d),
       fetchFeedbackData(publicClient, d),
       fetchAuctionData(publicClient, d),
       publicClient.getBlock({ blockTag: "latest" }),
+      chainNow(),
     ]);
     const names = new Map(graph.agents.map((a) => [a.agentId, a.name]));
     const veil = raw ? buildVeilView(raw, names) : null;
@@ -86,7 +87,7 @@ async function load(): Promise<Loaded | { error: string }> {
       sim: loadSimulated(),
       events,
       agents,
-      now: Number(block.timestamp),
+      now: Number(now),
       latestBlock: Number(block.number),
     };
   } catch (e) {

@@ -19,7 +19,7 @@ import {
   type RawFeedbackData,
   type VeilView,
 } from "@veil8004/sdk";
-import { loadConfig, makePublicClient, type AppConfig, type Signer } from "../../lib/app/runtime";
+import { loadConfig, makePublicClient, nextBlockTime, type AppConfig, type Signer } from "../../lib/app/runtime";
 import { readVault, type Vault } from "../../lib/app/vault";
 
 export type ChainData = {
@@ -83,14 +83,14 @@ export function useVeil(): { veil: Veil | null; error: string | null } {
         fetchVeilData(client, d),
         fetchAuctionData(client, d),
         fetchFeedbackData(client, d),
-        client.getBlock({ blockTag: "latest" }),
+        nextBlockTime(client),
         signer ? client.getBalance({ address: signer.address }) : Promise.resolve(null),
       ]);
       const anon = d.veil?.anonymousFeedback?.toLowerCase();
       const graph = buildPublicGraph({ ...rawPublic, feedback: rawPublic.feedback.filter((f) => f.client.toLowerCase() !== anon) });
       const names = new Map(graph.agents.map((a) => [a.agentId, a.name]));
       setData({
-        now: block.timestamp,
+        now: block,
         graph,
         veil: rawVeil ? buildVeilView(rawVeil, names) : null,
         auction: rawAuction ? buildAuctionView(rawAuction, names) : null,

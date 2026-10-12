@@ -15,7 +15,16 @@ The walkthrough for someone seeing it cold is [docs/demo.md](docs/demo.md).
 ## Quick start: run the frontend and check it
 
 Everything runs on your own machine: a local test chain, two small services, the workflow runner and the website.
-No crypto wallet, no testnet funds and no accounts are needed. Tested on macOS and Linux.
+No crypto wallet, no testnet funds and no accounts are needed. Tested on macOS and Linux; on Windows, use
+[WSL2](https://learn.microsoft.com/windows/wsl/install) (Ubuntu) and run every command inside it.
+
+**TL;DR** (after installing the tools in step 1):
+
+```bash
+git clone --recurse-submodules https://github.com/MahiVasisth/VeilAgent.git && cd VeilAgent
+make install
+KEEP=1 make demo      # wait for "Demo complete.", then open http://localhost:3000
+```
 
 ### 1. Install the tools (once)
 
@@ -42,6 +51,13 @@ make install          # git submodules + JavaScript packages
 ```
 
 If you cloned without `--recurse-submodules`, `make install` fetches the submodules for you.
+
+**Already have the repo?** Get the latest version first:
+
+```bash
+git pull
+make install          # picks up new submodules and packages
+```
 
 ### 3. Start it
 
@@ -91,11 +107,13 @@ You play several people. Switch accounts with the icon at the top right of the d
 | 2 | **Borealis** | Find work | Credential `QS-2026-0582` → **Get qualified** |
 | 3 | **Client A** | Hire | **Post task** (Sanctions screening, 10 min) |
 | 4 | **Atlas**, then **Borealis** | Find work | Type a price on the open task → **Place sealed bid** |
-| 5 | anyone | sidebar | Click **+10m** to pass the deadline, then **Close bidding** (Hire tab); the lowest bid wins |
-| 6 | **Client A** | Hire | **Mark job completed**, wait a few seconds, then **Rate anonymously** |
+| 5 | anyone | sidebar, then Hire | Click **+10m** (sidebar) to pass the deadline, then **Close bidding** on the task. Wait about 5 seconds: the sealed bids are opened and the lowest wins |
+| 6 | **Client A** | Hire | **Mark job completed**, wait about 5 seconds for the rating receipt, then **Rate anonymously** |
 | 7 | **Treasury desk** | Screening | Screen `Northwind Trading LLC` → **Export for audit**, then drop the file on **Verify** |
 
-After each step, open **Auctions** or **Explorer** to see what the public sees. Fictional test data: the sanctions list
+After each step, open **Auctions** or **Explorer** to see what the public sees. On top of option A, the agents show
+**Expired**, because the scripted demo fast-forwards the chain clock: qualify them again with steps 1 and 2 before
+bidding. Fictional test data: the sanctions list
 flags *Kestrel Shipping Co*, *Blackfin Holdings Ltd* and *Orrin Maritime SA*; valid credentials are
 `QS-2026-0417`, `-0582`, `-0733` and `-0901`.
 
@@ -124,6 +142,9 @@ Run `bun run build` in `frontend/` before committing to catch type errors, and `
 | Demo accounts don't appear on the sign-in screen | They only show on the local chain (31337). Make sure you started it with step 3 |
 | The data is gone after a restart | Expected: every run starts a fresh chain. Use option A again for demo data |
 | Proving files fail to download | Check your internet connection and run `make artifacts` once |
+| *Find work* shows "Atlas needs a qualification to bid" instead of a price box | Do steps 1 and 2 first (agents show **Expired** after option A) |
+| **Close bidding** doesn't appear | The deadline hasn't passed yet: click **+10m** in the sidebar |
+| A button seems to do nothing | Look for the message in the bottom-right corner; errors stay until you close them |
 
 ## What the app does, and what is simulated
 

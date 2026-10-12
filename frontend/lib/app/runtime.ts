@@ -138,6 +138,19 @@ export async function sendTx(client: PublicClient, signer: Signer, call: Call): 
   return receipt;
 }
 
+/** The time the chain will stamp on the *next* block, which is what a contract's `block.timestamp` check sees. An idle
+ *  Anvil keeps an old latest block while its clock runs on (and `skipTime` adds an offset), so the latest block's time
+ *  can be hours behind; Anvil reports the next block's time as the pending block. Elsewhere, falls back to the later of
+ *  the latest block and this machine's clock. */
+export async function nextBlockTime(client: PublicClient): Promise<bigint> {
+  const [latest, pending] = await Promise.all([
+    client.getBlock({ blockTag: "latest" }),
+    client.getBlock({ blockTag: "pending" }).catch(() => null),
+  ]);
+  const wall = BigInt(Math.floor(Date.now() / 1000));
+  return [latest.timestamp, pending?.timestamp ?? 0n, wall].reduce((a, b) => (b > a ? b : a));
+}
+
 /** Anvil only: moves the chain clock forward (deadlines, expiries, rating windows) and mines a block. */
 export async function skipTime(client: PublicClient, seconds: number) {
   await client.request({ method: "evm_increaseTime" as never, params: [`0x${seconds.toString(16)}`] as never });

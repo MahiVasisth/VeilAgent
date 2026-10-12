@@ -18,7 +18,7 @@ import {
 } from "@veil8004/sdk";
 import { feedbackScope, fetchGroup, Identity, toSolidityProof } from "@veil8004/sdk/semaphore-core";
 import { proveMembership } from "./prove";
-import { sendTx, uploadSealed, type AppConfig, type Signer } from "./runtime";
+import { nextBlockTime, sendTx, uploadSealed, type AppConfig, type Signer } from "./runtime";
 import { download, readVault, updateVault } from "./vault";
 
 type Ctx = { config: AppConfig; d: Deployment; client: PublicClient; signer: Signer; scope: string };
@@ -67,7 +67,7 @@ export async function postTask(c: Ctx, p: { category: string; minutes: number })
   const identity = new Identity();
   const commitment = identity.commitment.toString();
   updateVault(c.scope, (v) => v.identities.push({ taskId: null, commitment, privateKey: identity.export(), owner: c.signer.address, at: Date.now() }));
-  const now = (await c.client.getBlock({ blockTag: "latest" })).timestamp;
+  const now = await nextBlockTime(c.client);
   const receipt = await sendTx(c.client, c.signer, {
     address: hiring,
     abi: sealedBidHiringAbi as Abi,

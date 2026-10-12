@@ -212,3 +212,4 @@ contract SealedBidHiring is VeilGate, ReceiverTemplate {
         emit JobAwarded(taskId, winnerAgentId, winningPrice, validBidCount, merkleRoot);
     }
 }
+ 

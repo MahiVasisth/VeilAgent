@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { formatUnits } from "viem";
 import { buildAuctionView, buildPublicGraph, fetchAuctionData, fetchPublicData, type AuctionView, type SimulatedFile } from "@veil8004/sdk";
-import { deployment, publicClient, simulated as loadSimulated } from "../../lib/chain";
+import { chainNow, deployment, publicClient, simulated as loadSimulated } from "../../lib/chain";
 import { avatarStyle, formatDate, label, plural, relative, short } from "../../lib/format";
 import { EmptyState, ErrorState, PageHeader, PrivacyReport } from "../components";
 import { CheckIcon, LockIcon } from "../icons";
@@ -16,9 +16,9 @@ async function load(): Promise<Loaded | { error: string }> {
     const d = deployment();
     const raw = await fetchAuctionData(publicClient, d);
     if (!raw) return { view: null, simulated: false, sim: null, now: 0n };
-    const [pub, block] = await Promise.all([fetchPublicData(publicClient, d), publicClient.getBlock({ blockTag: "latest" })]);
+    const [pub, now] = await Promise.all([fetchPublicData(publicClient, d), chainNow()]);
     const graph = buildPublicGraph(pub);
-    return { view: buildAuctionView(raw, new Map(graph.agents.map((a) => [a.agentId, a.name]))), simulated: d.veil?.forwarderIsMock ?? false, sim: loadSimulated(), now: block.timestamp };
+    return { view: buildAuctionView(raw, new Map(graph.agents.map((a) => [a.agentId, a.name]))), simulated: d.veil?.forwarderIsMock ?? false, sim: loadSimulated(), now };
   } catch (e) {
     return { error: e instanceof Error ? e.message.split("\n")[0]! : String(e) };
   }

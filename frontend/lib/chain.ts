@@ -17,3 +17,14 @@ export function deployment(): Deployment {
 export function simulated(): SimulatedFile | null {
   return loadSimulated(DEPLOYMENTS_DIR, anvil.id);
 }
+
+/** The time the next block will carry (see nextBlockTime in lib/app/runtime.ts): on an idle Anvil the latest block can
+ *  be hours old, so "closes in" and "ago" are measured against the pending block instead. */
+export async function chainNow(): Promise<bigint> {
+  const [latest, pending] = await Promise.all([
+    publicClient.getBlock({ blockTag: "latest" }),
+    publicClient.getBlock({ blockTag: "pending" }).catch(() => null),
+  ]);
+  const wall = BigInt(Math.floor(Date.now() / 1000));
+  return [latest.timestamp, pending?.timestamp ?? 0n, wall].reduce((a, b) => (b > a ? b : a));
+}
