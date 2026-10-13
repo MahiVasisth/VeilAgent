@@ -264,10 +264,6 @@ registries and the real CRE forwarder. The full list is in
 | TreasuryAction (gated) | `0x931Ae12d32abb86Fb63508ac03117E4aB1F1a44d` |
 | Semaphore | `0xD66200834e64f4aC90AD1fd1822dE96E3b29C126` |
 
-> [!NOTE]
-> The three CRE workflows are not deployed on testnet yet (their workflow ids are still unset), so the end-to-end flow
-> currently runs on the local chain. The remaining steps are in [docs/submission.md](docs/submission.md).
-
 ```bash
 DRY_RUN=1 make deploy-testnet   # rehearse on a local fork of Monad testnet; spends nothing
 make deploy-testnet             # the real deployment; needs a funded DEPLOYER_PRIVATE_KEY and TREASURY_OPERATOR in .env
