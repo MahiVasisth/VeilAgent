@@ -1,4 +1,4 @@
-// The Veil8004 demo (docs/SPEC.md "Demo script"), against a fresh Anvil with the sealed store, the mock screening API
+// The Veil8004 demo, against a fresh Anvil with the sealed store, the mock screening API
 // and the local runner (a SIMULATION of the CRE DON, running W1, W3 and W2) up. Started by scripts/demo.sh.
 //   1. Public baseline: plain ERC-8004 interactions, and what an indexer reads from them.
 //   2. Sealed auction: a task is posted, an unattested agent is rejected, three attested agents bid, W3 awards the
@@ -313,11 +313,11 @@ say("Measured gas (median per transaction, from receipts; reports via the MockFo
 for (const c of costs.rows) say(`  ${c.label.padEnd(26)} ${formatGas(c.median).padStart(10)}   (${c.count} tx)`);
 check(costs.attestationTotal !== null && costs.rows.some((c) => c.op === "rating"), `one private attestation end to end: ${formatGas(costs.attestationTotal ?? 0n)} gas`);
 
-const claims = parseClaimsTable(readFileSync(join(ROOT, "docs/threat-model.md"), "utf8"));
+const claims = parseClaimsTable(readFileSync(join(ROOT, "README.md"), "utf8"));
 say("");
-say("CLAIMS AND LIMITS (docs/threat-model.md). The demo claims nothing beyond this table:");
+say("CLAIMS AND LIMITS (README.md). The demo claims nothing beyond this table:");
 for (const c of claims) say(`  ${({ yes: "✔", no: "✘", partial: "~" } as const)[claimKind(c.claimed)]} ${c.property}: ${c.claimed}${c.notes ? ` (${c.notes})` : ""}`);
-check(claims.length > 0, `${claims.length} claims, read from the threat model`);
+check(claims.length > 0, `${claims.length} claims, read from the README`);
 
 finish("DEMO", "every step of the demo script ran and every statement it printed was checked.");
 process.exit(0); // snarkjs may leave handles open

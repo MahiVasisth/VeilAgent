@@ -8,14 +8,14 @@
 
 [![Monad testnet](https://img.shields.io/badge/Monad-testnet%2010143-836EF9?style=for-the-badge)](#-live-on-monad-testnet)
 [![Chainlink CRE](https://img.shields.io/badge/Chainlink-CRE-375BD2?style=for-the-badge&logo=chainlink&logoColor=white)](#-how-it-works)
-[![ERC-8004](https://img.shields.io/badge/ERC-8004-222222?style=for-the-badge&logo=ethereum&logoColor=white)](docs/extension-draft.md)
+[![ERC-8004](https://img.shields.io/badge/ERC-8004-222222?style=for-the-badge&logo=ethereum&logoColor=white)](https://eips.ethereum.org/EIPS/eip-8004)
 [![Semaphore V4](https://img.shields.io/badge/Semaphore-V4-0B0B0B?style=for-the-badge)](#-anonymous-ratings)
 
 ![Foundry tests](https://img.shields.io/badge/Foundry%20tests-146%20passing-2ea44f)
 ![Bun tests](https://img.shields.io/badge/Bun%20tests-117%20passing-2ea44f)
 ![Demo](https://img.shields.io/badge/make%20demo-28%2F28%20checks-2ea44f)
 
-[**Quick start**](#-quick-start) · [**Features**](#-features) · [**How it works**](#-how-it-works) · [**Demo walkthrough**](docs/demo.md) · [**Claims and limits**](#claims-and-limits)
+[**Quick start**](#-quick-start) · [**Features**](#-features) · [**How it works**](#-how-it-works) · [**Claims and limits**](#claims-and-limits)
 
 </div>
 
@@ -23,7 +23,7 @@
 
 ## 🤔 The problem
 
-[ERC-8004](docs/extension-draft.md) gives AI agents an on-chain identity, reputation and validation record, so any
+[ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) gives AI agents an on-chain identity, reputation and validation record, so any
 contract can ask *"has this agent passed policy P?"* before it acts. The cost is that **everything is public**: who
 hired whom, what they paid, which counterparty got screened, and who left which review.
 
@@ -363,7 +363,7 @@ auditor. Secrets for a run (workflow key pairs, store token, API key) are genera
 | Receipt farming by a colluding agent | Raised in cost, not eliminated | Each receipt needs an awarded, completed job |
 | Payment rail privacy | No | Out of scope |
 | Gated action visibility | No | The action itself is public |
-| Assurance tier enforcement | No | Recorded and displayed; enforcement is specified in the extension draft |
+| Assurance tier enforcement | No | Recorded and displayed, not enforced on-chain |
 | Simulated clients | Disclosed | The demo's anonymity set is partly simulated |
 
 
@@ -378,20 +378,7 @@ services/    sealed-store/, mock-screening/ (MOCK)
 sdk/         commitments, seal, bids, merkle, disclosure, semaphore, claims, indexer views
 scripts/     client, bidder, auditor, rater, demo, simulator, deploy-testnet, phase exit checks
 frontend/    home (live demos), app dashboard, auctions, explorer (indexer view), verify (audit), costs, claims
-docs/        SPEC.md, phase0.md, threat-model.md, extension-draft.md, demo.md, writeup.md, submission.md
 ```
-
-## 📚 Docs
-
-| | |
-|---|---|
-| 🎬 [Demo walkthrough](docs/demo.md) | For someone seeing it cold |
-| 📐 [Build spec](docs/SPEC.md) | The full design |
-| 🧱 [ERC-8004 extension draft](docs/extension-draft.md) | The extension these contracts propose |
-| 🛡️ [Threat model](docs/threat-model.md) | What is claimed and what isn't |
-| 🔍 [Phase 0 findings](docs/phase0.md) | Research notes and open items |
-| ✍️ [Write-up](docs/writeup.md) | The project story |
-| ✅ [Submission checklist](docs/submission.md) | What's done and what's left |
 
 <div align="center">
 

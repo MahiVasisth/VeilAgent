@@ -5,12 +5,12 @@ import { PageHeader } from "../components";
 
 export const metadata = { title: "Security claims" };
 
-// Read from docs/threat-model.md at build time: the page claims exactly what the document does.
-const THREAT_MODEL = path.resolve(process.cwd(), "../docs/threat-model.md");
+// Read from the README's "Claims and limits" table at build time: the page claims exactly what the README does.
+const CLAIMS_SOURCE = path.resolve(process.cwd(), "../README.md");
 
 function load(): Claim[] | { error: string } {
   try {
-    return parseClaimsTable(readFileSync(THREAT_MODEL, "utf8"));
+    return parseClaimsTable(readFileSync(CLAIMS_SOURCE, "utf8"));
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -24,7 +24,7 @@ export default function ClaimsPage() {
   return (
     <main>
       <PageHeader eyebrow="Security" title="What we claim, and what we don't">
-        Every privacy property, stated plainly, straight from <code>docs/threat-model.md</code>.
+        Every privacy property, stated plainly, straight from the README's claims table.
       </PageHeader>
       {"error" in claims ? (
         <div className="card error">Could not read the claims table: {claims.error}</div>

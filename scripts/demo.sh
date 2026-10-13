@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# make demo: the whole Veil8004 demo (docs/SPEC.md "Demo script", walkthrough in docs/demo.md) from a clean Anvil.
+# make demo: the whole Veil8004 demo from a clean Anvil.
 #   deploy everything -> register agents -> start the sealed store, the mock screening API (MOCK) and the local runner
 #   (SIMULATED DON: W1, W3, W2) -> scripts/src/demo.ts (six steps, each statement checked) -> serve the frontend and check
 #   every page: /indexer (split view), /auction, /audit, /costs, /claims.

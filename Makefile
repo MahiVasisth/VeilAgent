@@ -1,4 +1,4 @@
-# Veil8004 build entry points. See docs/SPEC.md.
+# Veil8004 build entry points. See README.md.
 SHELL := /bin/bash
 CONTRACTS := contracts
 
@@ -16,7 +16,7 @@ help:
 	@echo "make phase5          Phase 5 exit check: receipts via W2, anonymous ratings, nullifiers, anchored aggregate (KEEP=1 to leave it running)"
 	@echo "make frontend        serve the frontend at http://127.0.0.1:3000 (needs a running, deployed Anvil)"
 	@echo "make app             run everything locally and use the app at http://127.0.0.1:3000/app (Ctrl-C stops)"
-	@echo "make demo            the whole demo on a clean Anvil, every step checked (KEEP=1 to present, PAUSE=1 to step; docs/demo.md)"
+	@echo "make demo            the whole demo on a clean Anvil, every step checked (KEEP=1 to present, PAUSE=1 to step)"
 	@echo "make simulate        add N SIMULATED clients to a running demo chain (CLIENTS=6, RATE=1 to also rate)"
 	@echo "make deploy-testnet  deploy to Monad testnet (needs .env; DRY_RUN=1 rehearses on a local fork, spends nothing)"
 

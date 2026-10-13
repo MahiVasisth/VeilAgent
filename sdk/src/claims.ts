@@ -1,4 +1,4 @@
-// The claims table lives in one place, docs/threat-model.md ("## Claims and limits"). The frontend's claims page and the
+// The claims table lives in one place, the README ("## Claims and limits"). The frontend's claims page and the
 // demo script read it from there, so neither can claim more than the document does.
 
 export type Claim = { property: string; claimed: string; notes: string };
