@@ -4,6 +4,7 @@
 #   the local runner (SIMULATED DON: W1, W3, W2) -> the frontend. Only a plain ERC-8004 baseline (two public hires, for
 #   the indexer comparison) is put on-chain; everything Veil8004 you do in the app.
 # Stays in the foreground; Ctrl-C stops everything. For the scripted walkthrough instead, use make demo.
+# BACKEND_ONLY=1 make app: everything except the frontend; run it yourself in another terminal (the script prints how).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export ANVIL_RPC_URL=${ANVIL_RPC_URL:-http://127.0.0.1:8545}
@@ -11,6 +12,7 @@ export SEALED_STORE_URL=${SEALED_STORE_URL:-http://127.0.0.1:8787}
 export MOCK_SCREENING_URL=${MOCK_SCREENING_URL:-http://127.0.0.1:8788}
 ANVIL_PORT=${ANVIL_RPC_URL##*:}
 WEB_PORT=${WEB_PORT:-3000}
+BACKEND_ONLY=${BACKEND_ONLY:-0}
 LOGS=$(mktemp -d)
 PIDS=()
 
@@ -20,7 +22,7 @@ wait_for() { for _ in $(seq 1 150); do eval "$1" >/dev/null 2>&1 && return 0; sl
 step() { printf '\n==> %s\n' "$*"; }
 
 for tool in anvil forge cast bun curl openssl; do
-  command -v "$tool" >/dev/null || { echo "missing $tool; see README.md Setup" >&2; exit 1; }
+  command -v "$tool" >/dev/null || { echo "missing $tool; see README.md Quick start" >&2; exit 1; }
 done
 if cast chain-id --rpc-url "$ANVIL_RPC_URL" >/dev/null 2>&1; then
   echo "something is already listening on $ANVIL_RPC_URL; stop it first (an earlier make app or KEEP=1 run?)" >&2; exit 1
@@ -37,7 +39,9 @@ fi
 step "build contracts, ABIs and the frontend (logs: $LOGS)"
 (cd contracts && forge build --quiet)
 bun scripts/src/gen-abis.ts
-(cd frontend && bun run build >"$LOGS/next-build.log" 2>&1) || { cat "$LOGS/next-build.log"; exit 1; }
+if [[ "$BACKEND_ONLY" != 1 ]]; then
+  (cd frontend && bun run build >"$LOGS/next-build.log" 2>&1) || { cat "$LOGS/next-build.log"; exit 1; }
+fi
 
 step "start a clean Anvil, deploy, register Atlas, Borealis and Cirrus"
 anvil --port "$ANVIL_PORT" --silent >"$LOGS/anvil.log" 2>&1 & PIDS+=($!)
@@ -63,6 +67,23 @@ wait_for "curl -sf $SEALED_STORE_URL/health"
 wait_for "curl -sf $MOCK_SCREENING_URL/health"
 RUNNER_FROM_BLOCK=$(cast block-number --rpc-url "$ANVIL_RPC_URL") bun cre/local-runner/src/main.ts >"$LOGS/runner.log" 2>&1 & PIDS+=($!)
 wait_for "grep -q JobCompleted $LOGS/runner.log"
+
+if [[ "$BACKEND_ONLY" == 1 ]]; then
+  # The frontend gets only the workflows' PUBLIC keys; they change every run, so source this file in its terminal.
+  printf 'export W1_PUBLIC_KEY=%s W3_PUBLIC_KEY=%s\n' "$W1_PUBLIC_KEY" "$W3_PUBLIC_KEY" >.cache/frontend.env
+  cat <<EOF2
+
+Backend is running (chain $ANVIL_RPC_URL, sealed store $SEALED_STORE_URL, mock screening $MOCK_SCREENING_URL, local runner).
+Start the frontend in another terminal:
+
+    source .cache/frontend.env && make frontend
+
+  Then open http://127.0.0.1:$WEB_PORT/app
+  Logs: $LOGS (runner.log shows the SIMULATED DON at work). Ctrl-C stops the backend.
+EOF2
+  wait
+  exit 0
+fi
 
 step "frontend"
 # The app server gets only the workflows' PUBLIC keys (plus the store URL); it never sees a decryption key.

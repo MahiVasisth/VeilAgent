@@ -1,24 +1,139 @@
-# Veil8004
+<div align="center">
 
-Private attestations for ERC-8004 agents on Monad testnet, with sealed-bid agent hiring as the
-flagship application and Chainlink CRE running the validator, the bid opener and the receipt issuer.
+# 🕶️ Veil8004
 
-**Status: Phase 6 (demo and documents).** All flows are built and run end to end on a local Anvil with one command:
+### Private attestations for ERC-8004 AI agents
 
-```bash
-make demo            # fresh Anvil -> deploy -> the six-step demo, every statement checked -> five pages checked
-KEEP=1 make demo     # same, and leave everything running: http://127.0.0.1:3000/indexer
+**Hire agents, check them against policy, and rate them, all on-chain, without publishing who did what for how much.**
+
+[![Monad testnet](https://img.shields.io/badge/Monad-testnet%2010143-836EF9?style=for-the-badge)](#-live-on-monad-testnet)
+[![Chainlink CRE](https://img.shields.io/badge/Chainlink-CRE-375BD2?style=for-the-badge&logo=chainlink&logoColor=white)](#-how-it-works)
+[![ERC-8004](https://img.shields.io/badge/ERC-8004-222222?style=for-the-badge&logo=ethereum&logoColor=white)](docs/extension-draft.md)
+[![Semaphore V4](https://img.shields.io/badge/Semaphore-V4-0B0B0B?style=for-the-badge)](#-anonymous-ratings)
+
+![Foundry tests](https://img.shields.io/badge/Foundry%20tests-146%20passing-2ea44f)
+![Bun tests](https://img.shields.io/badge/Bun%20tests-117%20passing-2ea44f)
+![Demo](https://img.shields.io/badge/make%20demo-28%2F28%20checks-2ea44f)
+
+[**Quick start**](#-quick-start) · [**Features**](#-features) · [**How it works**](#-how-it-works) · [**Demo walkthrough**](docs/demo.md) · [**Claims and limits**](#claims-and-limits)
+
+</div>
+
+---
+
+## 🤔 The problem
+
+[ERC-8004](docs/extension-draft.md) gives AI agents an on-chain identity, reputation and validation record, so any
+contract can ask *"has this agent passed policy P?"* before it acts. The cost is that **everything is public**: who
+hired whom, what they paid, which counterparty got screened, and who left which review.
+
+## 💡 The fix
+
+Veil8004 keeps ERC-8004's composability and moves the sensitive parts off the chain. Chainlink CRE workflows act as the
+validator, the bid opener and the receipt issuer.
+
+| | 🔓 Plain ERC-8004 | 🕶️ Veil8004 |
+|---|---|---|
+| **Screening a counterparty** | Name and result on-chain | Salted commitment + pass/fail only |
+| **Hiring an agent** | Every quote is public | Sealed bids; losing prices never touch the chain |
+| **Proving it to an auditor** | Everything is already public | Disclose *one* request, only when you choose |
+| **Rating an agent** | Your wallet signs the review | Zero-knowledge proof you were a real client |
+| **Gating a contract action** | `require(passed)` | Same check, without revealing the input |
+
+---
+
+## ✨ Features
+
+### 🛡️ Private validation
+An agent or client is screened against a policy (for example "not on the sanctions list"). Only a salted commitment,
+the policy id and the result go on-chain. The **W1 validator** workflow decrypts the sealed input, recomputes the
+commitment, calls the screening API and reports the result. If the input doesn't match the commitment, the registry
+rejects the report.
+
+### 🔐 Composable gate
+`onlyPassed` modifiers let any contract require a fresh, matching pass before it runs. The treasury demo action
+**passes** on a valid result and **reverts** on missing, failed, expired, wrong-policy, tampered or someone else's results.
+
+### 🏷️ Sealed-bid agent hiring
+Clients post tasks, qualified agents submit **sealed bids**, and once bidding closes the **W3 bid opener** awards the
+lowest price. The winner's price is checked on-chain against its commitment. Losing prices never reach the chain, and
+every loser can prove with a **Merkle inclusion proof** that their bid was counted.
+
+### 🔎 Selective disclosure
+The requester exports an **audit bundle** for exactly one validation. The auditor checks it with read-only `eth_call`s
+and sends no transaction. Change one character and it fails. The disclosed salt opens nothing else.
+
+### 🗳️ Anonymous ratings
+After a completed job, the **W2 receipt issuer** adds the client to a **Semaphore** group for that category and epoch.
+The client then rates the agent with a zero-knowledge membership proof from a fresh wallet: one rating per agent per
+epoch, enforced by nullifiers. After the rating window, anyone can anchor the average into the official ERC-8004
+Reputation Registry.
+
+### 📊 Six-page web app
+A dashboard where you play every role, a block explorer that shows **public vs sealed** side by side, an audit
+verifier, a gas-cost comparison, and a claims page read directly from the threat model.
+
+---
+
+## 🏗️ How it works
+
+```mermaid
+flowchart LR
+    subgraph Browser["🧑‍💻 Your browser"]
+        U[Client / Agent owner / Treasury]
+        ZK[Semaphore prover]
+    end
+
+    subgraph OffChain["🔒 Off-chain"]
+        S[(Sealed store<br/>ciphertext only)]
+        API[Screening API]
+    end
+
+    subgraph CRE["⛓️ Chainlink CRE workflows"]
+        W1[W1 · Validator]
+        W3[W3 · Bid opener]
+        W2[W2 · Receipt issuer]
+    end
+
+    subgraph Chain["🟣 Monad"]
+        PVR[PrivateValidationRegistry]
+        SBH[SealedBidHiring]
+        RGM[ReceiptGroupManager]
+        AF[AnonymousFeedback]
+        GATE[TreasuryAction · gated]
+        REP[ERC-8004 Reputation Registry]
+    end
+
+    U -- "sealed input / sealed bid" --> S
+    U -- "commitment" --> PVR
+    U -- "bid commitment" --> SBH
+    PVR -- "ValidationRequested" --> W1
+    S --> W1
+    W1 <--> API
+    W1 -- "pass / fail report" --> PVR
+    PVR -- "onlyPassed" --> GATE
+    SBH -- "BiddingClosed" --> W3
+    S --> W3
+    W3 -- "winner + Merkle root" --> SBH
+    SBH -- "JobCompleted" --> W2
+    W2 -- "add member" --> RGM
+    ZK -- "ZK proof from fresh wallet" --> AF
+    RGM --> AF
+    AF -- "anchor average" --> REP
 ```
 
-The walkthrough for someone seeing it cold is [docs/demo.md](docs/demo.md).
+| Workflow | Triggered by | Does |
+|---|---|---|
+| **W1** Validator | `ValidationRequested` | Decrypts the sealed input, checks the commitment, calls the screening API, reports pass/fail |
+| **W3** Bid opener | `BiddingClosed` | Opens every sealed bid, picks the lowest valid one, posts the winner and a Merkle root of all bids |
+| **W2** Receipt issuer | `JobCompleted` | Adds the client's Semaphore identity to the receipt group for that category and epoch |
 
-## Quick start: run the frontend and check it
+---
 
-Everything runs on your own machine: a local test chain, two small services, the workflow runner and the website.
-No crypto wallet, no testnet funds and no accounts are needed. Tested on macOS and Linux; on Windows, use
-[WSL2](https://learn.microsoft.com/windows/wsl/install) (Ubuntu) and run every command inside it.
+## 🚀 Quick start
 
-**TL;DR** (after installing the tools in step 1):
+Everything runs on your machine: a local chain, two small services, the workflow runner and the website.
+**No wallet, no testnet funds, no accounts needed.**
 
 ```bash
 git clone --recurse-submodules https://github.com/MahiVasisth/VeilAgent.git && cd VeilAgent
@@ -26,7 +141,8 @@ make install
 KEEP=1 make demo      # wait for "Demo complete.", then open http://localhost:3000
 ```
 
-### 1. Install the tools (once)
+<details>
+<summary><b>🧰 Tools you need (once)</b></summary>
 
 | Tool | Version | Install |
 |---|---|---|
@@ -36,68 +152,43 @@ KEEP=1 make demo      # wait for "Demo complete.", then open http://localhost:30
 | Node.js | ≥ 22 | [nodejs.org](https://nodejs.org) or `nvm install 22` |
 | `curl`, `openssl`, `make`, `python3` | any | preinstalled on macOS and most Linux distributions |
 
-Check them:
-
 ```bash
 forge --version && anvil --version && bun --version && node --version
 ```
 
-### 2. Get the code (once)
+Tested on macOS and Linux. On Windows, use [WSL2](https://learn.microsoft.com/windows/wsl/install) (Ubuntu) and run
+every command inside it. If you cloned without `--recurse-submodules`, `make install` fetches the submodules for you.
+Already have the repo? Run `git pull && make install`.
 
-```bash
-git clone --recurse-submodules https://github.com/MahiVasisth/VeilAgent.git
-cd VeilAgent
-make install          # git submodules + JavaScript packages
-```
+</details>
 
-If you cloned without `--recurse-submodules`, `make install` fetches the submodules for you.
+Two ways to start. Both build everything the first time (a few minutes; the first run downloads the pinned Semaphore
+proving files, so it needs internet once).
 
-**Already have the repo?** Get the latest version first:
-
-```bash
-git pull
-make install          # picks up new submodules and packages
-```
-
-### 3. Start it
-
-Pick one. Both build everything themselves the first time (a few minutes, and the first run downloads the pinned
-Semaphore proving files, so it needs internet once).
-
-**A. Filled with demo data (best for checking the UI):**
-
-```bash
-KEEP=1 make demo
-```
-
-It runs the scripted demo on a fresh chain (about 70 seconds), checks 28 statements and every page, and then **leaves
-everything running**. When it prints `Demo complete.`, open **http://localhost:3000**. The last lines print the
-process ids to stop it (`Stop with: kill …`) and the path of an audit bundle you can try on the Verify page.
-
-**B. Empty, to click through the whole flow yourself:**
-
-```bash
-make app
-```
-
-When it prints `Veil8004 is running`, open **http://localhost:3000/app**. Press `Ctrl-C` in that terminal to stop
-everything.
-
-### 4. What to check
-
-| Page | URL | What you should see |
+| Command | What you get | Open |
 |---|---|---|
-| Home | `/` | Animated hero; a **Try it** box (type a company name, click *Screen privately*, watch the 4 steps); a **Flip the lens** public/private toggle |
-| Dashboard | `/app` | Sign-in with a demo account (Atlas, Borealis, Cirrus, Client A, Client B, Treasury desk); Overview, Hire, Find work, Screening, Vault |
-| Auctions | `/auction` | Filter tabs; task cards with 🔒 sealed bids and the winner in green; *On-chain proof* folds open |
-| Explorer | `/indexer` | Block-explorer view: live stats, a searchable **Activity** feed (click any event to see what is on-chain and what stayed sealed), an **Agents** directory, and *Privacy check* / *Screenings* / *Ratings* tabs comparing plain ERC-8004 with Veil8004 |
-| Verify | `/audit` | Drop an audit bundle (option A prints its path) and see **Verified**; edit one character and see it fail |
-| Gas costs | `/costs` | Gas per operation, ERC-8004 vs Veil8004 |
-| Security claims | `/claims` | Everything the project claims, and doesn't |
+| `KEEP=1 make demo` | The scripted demo on a fresh chain (~70 s): **28 checks**, every page checked, then everything **left running** with demo data | http://localhost:3000 |
+| `make app` | An empty chain, so you can click through the whole flow yourself. `Ctrl-C` stops it | http://localhost:3000/app |
 
-The small **Demo network** chip on each page explains what is simulated on this local chain.
+`make demo` prints the process ids to stop it (`Stop with: kill …`) and the path of an audit bundle you can drop on
+the Verify page.
 
-### 5. Try the full flow in the app (with option B, or on top of A)
+### 🖥️ The pages
+
+| Page | URL | What you'll see |
+|---|---|---|
+| 🏠 **Home** | `/` | Animated hero, a live **Try it** box (screen a company privately and watch the 4 steps), and a **Flip the lens** public/private toggle |
+| 📋 **Dashboard** | `/app` | Sign in as a demo account (Atlas, Borealis, Cirrus, Client A, Client B, Treasury desk): Overview, Hire, Find work, Screening, Vault |
+| 🏷️ **Auctions** | `/auction` | Task cards with 🔒 sealed bids and the winner in green; *On-chain proof* folds open |
+| 🔭 **Explorer** | `/indexer` | Block-explorer view: live stats, a searchable activity feed (click any event to see what's on-chain and what stayed sealed), an agents directory, and side-by-side plain ERC-8004 vs Veil8004 tabs |
+| ✅ **Verify** | `/audit` | Drop an audit bundle and see **Verified**; edit one character and watch it fail |
+| ⛽ **Gas costs** | `/costs` | Gas per operation, ERC-8004 vs Veil8004 |
+| 📜 **Security claims** | `/claims` | Everything the project claims, and everything it doesn't |
+
+The **Demo network** chip on each page explains what is simulated on the local chain.
+
+<details>
+<summary><b>🎮 Play the whole flow yourself (7 steps)</b></summary>
 
 You play several people. Switch accounts with the icon at the top right of the dashboard.
 
@@ -111,15 +202,19 @@ You play several people. Switch accounts with the icon at the top right of the d
 | 6 | **Client A** | Hire | **Mark job completed**, wait about 5 seconds for the rating receipt, then **Rate anonymously** |
 | 7 | **Treasury desk** | Screening | Screen `Northwind Trading LLC` → **Export for audit**, then drop the file on **Verify** |
 
-After each step, open **Auctions** or **Explorer** to see what the public sees. On top of option A, the agents show
-**Expired**, because the scripted demo fast-forwards the chain clock: qualify them again with steps 1 and 2 before
-bidding. Fictional test data: the sanctions list
-flags *Kestrel Shipping Co*, *Blackfin Holdings Ltd* and *Orrin Maritime SA*; valid credentials are
-`QS-2026-0417`, `-0582`, `-0733` and `-0901`.
+After each step, open **Auctions** or **Explorer** to see what the public sees. After `make demo`, the agents show
+**Expired** because the scripted demo fast-forwards the chain clock: qualify them again with steps 1 and 2 before
+bidding.
 
-### 6. Editing the frontend (optional)
+Fictional test data: the sanctions list flags *Kestrel Shipping Co*, *Blackfin Holdings Ltd* and *Orrin Maritime SA*.
+Valid credentials are `QS-2026-0417`, `-0582`, `-0733` and `-0901`.
 
-With option A running, stop its production web server and start the dev server, which reloads on every save:
+</details>
+
+<details>
+<summary><b>🛠️ Editing the frontend</b></summary>
+
+With `KEEP=1 make demo` running, stop its production web server and start the dev server, which reloads on every save:
 
 ```bash
 pkill -f next-server                                  # stops only the website; the chain and services keep running
@@ -132,188 +227,121 @@ from the app fails, and the home page's *Try it* box seals to a throwaway key in
 
 Run `bun run build` in `frontend/` before committing to catch type errors, and `make demo` to re-run every page check.
 
-### Troubleshooting
+</details>
+
+<details>
+<summary><b>🩺 Troubleshooting</b></summary>
 
 | Problem | Fix |
 |---|---|
 | `something is already listening on http://127.0.0.1:8545` or `… is in use` | An earlier run is still going. Stop it with the `kill …` line it printed, or `pkill anvil; pkill -f next-server; pkill -f sealed-store; pkill -f mock-screening; pkill -f local-runner` |
-| Page says **We couldn't reach the network** | The chain isn't running. Start it again with step 3 |
-| `missing anvil` / `missing bun` | Install the tool from step 1 and open a new terminal |
-| Demo accounts don't appear on the sign-in screen | They only show on the local chain (31337). Make sure you started it with step 3 |
-| The data is gone after a restart | Expected: every run starts a fresh chain. Use option A again for demo data |
+| Page says **We couldn't reach the network** | The chain isn't running. Start it again |
+| `missing anvil` / `missing bun` | Install the tool and open a new terminal |
+| Demo accounts don't appear on the sign-in screen | They only show on the local chain (31337) |
+| The data is gone after a restart | Expected: every run starts a fresh chain |
 | Proving files fail to download | Check your internet connection and run `make artifacts` once |
-| *Find work* shows "Atlas needs a qualification to bid" instead of a price box | Do steps 1 and 2 first (agents show **Expired** after option A) |
+| *Find work* shows "Atlas needs a qualification to bid" | Do steps 1 and 2 first (agents show **Expired** after `make demo`) |
 | **Close bidding** doesn't appear | The deadline hasn't passed yet: click **+10m** in the sidebar |
 | A button seems to do nothing | Look for the message in the bottom-right corner; errors stay until you close them |
 
-## What the app does, and what is simulated
+</details>
+
+---
+
+## 🟣 Live on Monad testnet
+
+The contracts are deployed on Monad testnet (chain `10143`) against the live ERC-8004 Identity and Reputation
+registries and the real CRE forwarder. The full list is in
+[`contracts/deployments/10143.json`](contracts/deployments/10143.json).
+
+| Contract | Address |
+|---|---|
+| PrivateValidationRegistry | `0x57c009367F590f0Fe27c31166DA32639a5987FAF` |
+| SealedBidHiring | `0x5482EE07e980d30558bb60085Bbc64425fA2555e` |
+| ReceiptGroupManager | `0x8AAa3b7b07C2e539395cb106A084e985b59abc59` |
+| AnonymousFeedback | `0xdb8addbE17eeE8716516E2d39f22bc564c1a89D1` |
+| PolicyRegistry | `0x96a96A34E43571B59e78F5139d0f2C86E3E45A4A` |
+| TreasuryAction (gated) | `0x931Ae12d32abb86Fb63508ac03117E4aB1F1a44d` |
+| Semaphore | `0xD66200834e64f4aC90AD1fd1822dE96E3b29C126` |
+
+> [!NOTE]
+> The three CRE workflows are not deployed on testnet yet (their workflow ids are still unset), so the end-to-end flow
+> currently runs on the local chain. The remaining steps are in [docs/submission.md](docs/submission.md).
 
 ```bash
-make app             # fresh local chain + everything running; open http://127.0.0.1:3000/app (Ctrl-C stops)
-```
-
-The app at `/app` lets you act as an agent owner, a client or the treasury, with a browser wallet (MetaMask on
-`http://127.0.0.1:8545`, chain 31337) or one of the labeled local demo accounts. You can get an agent qualified,
-post a task, place sealed bids, close bidding, mark a job completed, rate anonymously, screen a counterparty privately,
-execute the gated treasury action, and download an audit bundle. Salts, bid prices and rating identities are created
-in your browser and kept in its local storage (exportable under "Vault"). Rating proofs are generated in your
-browser. The app's server only forwards ciphertext to the sealed store and relays finished rating proofs.
-
-**What is simulated or mocked, everywhere in this repo:**
-- **The CRE DON.** A local runner (`cre/local-runner`) runs the same W1, W3 and W2 handler code as the CRE workflows
-  and delivers reports through a **MockForwarder**. It has no consensus, no report signatures and no enclave, and it
-  reads the screening API key from env, not through Confidential HTTP. The three CRE workflows are written and compile
-  to WASM, but have not been run under `cre workflow simulate` or deployed.
-- **The screening provider.** A mock API with a fictional hit list and a fictional credential list.
-- **Part of the anonymity set.** The population simulator (`scripts/src/simulator.ts`) adds simulated clients so
-  that a receipt group is not one person. Pages note it under the **Demo network** chip and label its rows `simulated` while its data is on the chain.
-- **All names, counterparties, credentials and prices** are fictional demo data.
-
-Input hiding from CRE node operators needs a Confidential Workflow, and is **designed, not demoed**. So is the hiding
-of validator API credentials through Confidential HTTP.
-
-- Build spec: [docs/SPEC.md](docs/SPEC.md)
-- Phase 0 findings and open items: [docs/phase0.md](docs/phase0.md)
-- What this project claims and does not claim: [docs/threat-model.md](docs/threat-model.md), copied below.
-  This README makes no claim beyond that table.
-- The ERC-8004 extension these contracts propose: [docs/extension-draft.md](docs/extension-draft.md)
-- Demo walkthrough: [docs/demo.md](docs/demo.md)
-
-## Setup
-
-Requirements: Foundry, Bun ≥ 1.4.2, and (for testnet only) the CRE CLI ≥ 1.30.0.
-
-```bash
-git clone --recurse-submodules https://github.com/MahiVasisth/VeilAgent.git
-cd VeilAgent
-make install
-cp .env.example .env
-make build
-make test
-```
-
-### Phase 1: the public baseline
-
-```bash
-make phase1          # clean Anvil -> deploy -> register agents -> public flow -> indexer checks (CLI and page)
-KEEP=1 make phase1   # same, but leave Anvil and the page running: http://127.0.0.1:3000/indexer
-```
-
-The page and `bun scripts/src/indexer.ts` rebuild the client, agent, payment, score and validation graph from
-public events and transactions only. That graph is what Veil8004 sets out to hide. The entity names and the
-"sanctions list" used by the baseline validator are fictional demo data, and the validator is a plain Anvil account.
-
-### Phase 2: private validation and the gate
-
-```bash
-make phase2          # clean Anvil -> deploy -> baseline -> sealed store + mock screening + local runner -> exit checks
-KEEP=1 make phase2   # same, but leave everything running: http://127.0.0.1:3000/indexer
-```
-
-`scripts/src/phase2.ts` shows the treasury action passing on a valid result and failing on missing, failed, expired,
-wrong-policy, tampered-input and someone else's results. It also checks that replayed reports and non-forwarder callers
-are rejected, and leak-scans the chain for every input and salt it used. `make phase2` then checks the page: plain
-inputs on the left, only commitment, policy and result on the right.
-
-Simulated or mocked here, and labeled as such in logs and on the page:
-- **Local runner** (`cre/local-runner`): a simulation of the CRE DON. It runs the same W1 handler as the CRE workflow,
-  but has no consensus and no report signatures, and reads the screening API key from env (no Confidential HTTP).
-- **MockForwarder**: delivers reports from one allow-listed key and checks no DON signatures.
-- **Mock screening API**: a fixed, fictional hit list.
-
-Secrets for a run (W1 key pair, store token, API key) are generated fresh by `scripts/phase2.sh` and never written to disk.
-
-### Phase 3: sealed-bid hiring
-
-```bash
-make phase3          # clean Anvil -> deploy -> agents -> services + local runner (W1 + W3) -> exit checks -> auction page
-KEEP=1 make phase3   # same, but leave everything running: http://127.0.0.1:3000/auction
-```
-
-`scripts/src/phase3.ts` registers a fourth agent that fails its qualification, posts a task, and has three agents
-pass `QUALIFIED_SCREENER_V1` through W1 (a **mock** `/qualify` endpoint with fictional credentials). The unqualified
-agent and a non-controller are rejected. The three bid (each sealed opening is uploaded under `bid:<commitment>` before
-the bid transaction). A duplicate bid, an early close and a late bid are rejected, anyone closes bidding, and the local
-runner's W3 awards the lowest. A replayed award is rejected, two losers verify Merkle inclusion from public data, and
-the client marks the job completed. It then leak-scans calldata, logs and the full Anvil state for the losing prices and
-salts. `make phase3` also checks the service logs and the auction page.
-
-```bash
-bun scripts/src/bidder.ts bid --task 1 --agent 0 --price 4217350000000000000000   # needs W3_PUBLIC_KEY, a running store
-bun scripts/src/bidder.ts inclusion --task 1 --agent 0                            # public data only
-```
-
-What this shows, as far as the [claims table](docs/threat-model.md) allows: losing bid prices stay off-chain, and the
-winner's price is checked against its commitment on-chain. That the winner was the lowest valid bid is **trusted to
-W3**; losers can only prove their bid was counted. Which agents bid, the winner and the winning price are public. The
-W3 CRE workflow is written and compiles to WASM, but has not been simulated or deployed, so hiding bids from node
-operators is designed, not demoed.
-
-### Phase 4: selective disclosure
-
-```bash
-make phase4          # clean Anvil -> deploy -> agents -> services + local runner (W1) -> exit checks -> audit page
-KEEP=1 make phase4   # same, but leave everything running: http://127.0.0.1:3000/audit
-```
-
-`scripts/src/phase4.ts` records four private validations (a pass, a fail, a client's pass and a pending one) and has the
-requester export a bundle for one. The auditor CLI verifies it with `eth_call` only. Bundles with a different input,
-salt, agent, policy, chain or registry are rejected, and so is the disclosed opening pointed at any other request. A
-dictionary attack using the disclosed salt and every real demo input opens none of the other commitments. The audit
-sends no transaction, and no input or salt reaches the chain, including the disclosed one. `make phase4` then checks
-the service logs and the `/audit` page and its `/audit/verify` endpoint.
-
-```bash
-bun scripts/src/auditor.ts bundle.json            # read-only; exit 0 = verified, 1 = not verified, 2 = malformed
-bun scripts/src/auditor.ts bundle.json --json     # machine-readable report
-```
-
-The bundle contains the salt. Anyone who holds it can verify the request and pass it on, so hand it only to the auditor.
-
-### Phase 5: receipts and anonymous feedback
-
-```bash
-make artifacts       # once: fetch the Semaphore proving artifacts (pinned hashes; proving is offline after this)
-make phase5          # clean Anvil -> deploy (incl. our own Semaphore V4) -> hiring -> W2 receipts -> ratings -> anchor
-KEEP=1 make phase5   # same, but leave everything running: http://127.0.0.1:3000/indexer
-```
-
-`scripts/src/phase5.ts` has three clients post tasks with Semaphore identity commitments and hire through sealed bids.
-When a client marks its job completed, W2 (the local runner) adds the client's commitment to the receipt group for
-that category and epoch. Each client then proves membership offline and rates the agent from a fresh wallet. A second
-rating for the same agent and epoch is rejected. So are ratings from non-members, out-of-range scores, mismatched
-scopes, ratings for agents with no job in the group, and late ratings. No receipt is issued without a completed,
-awarded job with an identity commitment. After the rating window, anyone anchors the average into the ERC-8004
-Reputation Registry. It is read back with `getSummary(agent, [AnonymousFeedback], "veil8004", "anon-aggregate")`.
-
-```bash
-bun scripts/src/rater.ts identity --out me.identity                  # commitment to pass to postTask
-bun scripts/src/rater.ts rate --task 1 --score 5 --identity me.identity # proves offline, sends from a fresh wallet
-```
-
-As far as the claims table allows: the rater is hidden within the group's anonymity set, and the score is not hidden.
-The set is small (3 in `make phase5`), and the client's identity commitment is public from `postTask` onwards.
-
-### Phase 6: the demo, the simulator and the cost panel
-
-`make demo` runs the spec's demo script (docs/demo.md walks through it). It also adds:
-
-- **`/costs`**: gas per operation, measured from transaction receipts. Plain ERC-8004 next to Veil8004, with the MockForwarder overhead labeled.
-- **`/claims`**: the claims table, read from docs/threat-model.md.
-- **The population simulator**: `make simulate CLIENTS=6 [RATE=1]` against a running `KEEP=1 make demo` chain
-  (first `source` the `public-keys.env` file that the demo prints). Agent attestations that lapsed are renewed through W1.
-  Everything it creates is listed in `contracts/deployments/31337-simulated.json` and labeled on the pages.
-
-Everything runs locally on Anvil without a CRE account.
-
-### Monad testnet
-
-```bash
-DRY_RUN=1 make deploy-testnet   # rehearse on a local fork of Monad testnet (live ERC-8004 registries + CRE forwarder); spends nothing
+DRY_RUN=1 make deploy-testnet   # rehearse on a local fork of Monad testnet; spends nothing
 make deploy-testnet             # the real deployment; needs a funded DEPLOYER_PRIVATE_KEY and TREASURY_OPERATOR in .env
 ```
 
-Not deployed yet; the remaining hand-run steps are in [docs/submission.md](docs/submission.md).
+---
+
+## 🎭 What's real and what's simulated
+
+> [!IMPORTANT]
+> This README makes no claim beyond the [claims table](#claims-and-limits) below.
+
+| | Status |
+|---|---|
+| Contracts, commitments, sealed bids, Merkle proofs, Semaphore proofs, audit bundles | ✅ **Real**, tested |
+| **The CRE DON** | 🧪 **Simulated.** A local runner (`cre/local-runner`) runs the same W1, W3 and W2 handler code as the CRE workflows and delivers reports through a **MockForwarder**. It has no consensus, no report signatures and no enclave, and it reads the screening API key from env rather than through Confidential HTTP. The three CRE workflows are written and compile to WASM, but have not been run under `cre workflow simulate` or deployed |
+| **The screening provider** | 🧪 **Mock** API with a fictional hit list and fictional credentials |
+| **Part of the anonymity set** | 🧪 The population simulator (`scripts/src/simulator.ts`) adds simulated clients so a receipt group isn't one person. Their rows are labeled `simulated` |
+| **Names, counterparties, credentials, prices** | 🧪 Fictional demo data |
+| Hiding inputs from CRE node operators (Confidential Workflow) and API credentials (Confidential HTTP) | 📐 **Designed, not demoed** |
+
+Salts, bid prices and rating identities are created in your browser and stay in its local storage (exportable under
+**Vault**). Rating proofs are generated in your browser. The app's server only forwards ciphertext to the sealed store
+and relays finished rating proofs.
+
+
+---
+
+## 🧪 Build, test and run each phase
+
+```bash
+cp .env.example .env
+make build
+make test            # 146 Foundry tests + 117 Bun tests
+```
+
+Every phase has a one-command exit check that starts from a clean Anvil. Add `KEEP=1` to leave everything running.
+
+| Command | Proves | Page |
+|---|---|---|
+| `make phase1` | **Public baseline:** the indexer rebuilds the full client, agent, payment, score and validation graph from public events. This is what Veil8004 hides | `/indexer` |
+| `make phase2` | **Private validation + gate:** the treasury action passes on a valid result and fails on missing, failed, expired, wrong-policy, tampered and foreign results. Replays and non-forwarder callers are rejected; the chain is leak-scanned for every input and salt | `/indexer` |
+| `make phase3` | **Sealed-bid hiring:** an unqualified agent is rejected; duplicate, early-close and late bids are rejected; W3 awards the lowest; losers verify Merkle inclusion; the full Anvil state is leak-scanned for losing prices and salts | `/auction` |
+| `make phase4` | **Selective disclosure:** bundles with a different input, salt, agent, policy, chain or registry are rejected; a dictionary attack with the disclosed salt opens nothing else | `/audit` |
+| `make phase5` | **Anonymous ratings:** double ratings, non-members, out-of-range scores, wrong scopes and late ratings are rejected; the average is anchored into the ERC-8004 Reputation Registry | `/indexer` |
+| `make demo` | **Everything:** the spec's demo script, 28 checks, every page | `/` |
+
+<details>
+<summary><b>⌨️ Command-line tools</b></summary>
+
+```bash
+# Sealed bids
+bun scripts/src/bidder.ts bid --task 1 --agent 0 --price 4217350000000000000000   # needs W3_PUBLIC_KEY, a running store
+bun scripts/src/bidder.ts inclusion --task 1 --agent 0                            # public data only
+
+# Audit (read-only; exit 0 = verified, 1 = not verified, 2 = malformed)
+bun scripts/src/auditor.ts bundle.json
+bun scripts/src/auditor.ts bundle.json --json
+
+# Anonymous ratings
+make artifacts                                                          # once: fetch the pinned Semaphore artifacts
+bun scripts/src/rater.ts identity --out me.identity                     # commitment to pass to postTask
+bun scripts/src/rater.ts rate --task 1 --score 5 --identity me.identity # proves offline, sends from a fresh wallet
+
+# Grow the anonymity set (against a running KEEP=1 make demo, after sourcing its public-keys.env)
+make simulate CLIENTS=6 [RATE=1]
+```
+
+The audit bundle contains the salt. Anyone who holds it can verify the request and pass it on, so give it only to the
+auditor. Secrets for a run (workflow key pairs, store token, API key) are generated fresh per run and never written to disk.
+
+</details>
+
+---
 
 ## Claims and limits
 
@@ -342,7 +370,10 @@ Not deployed yet; the remaining hand-run steps are in [docs/submission.md](docs/
 | Assurance tier enforcement | No | Recorded and displayed; enforcement is specified in the extension draft |
 | Simulated clients | Disclosed | The demo's anonymity set is partly simulated |
 
-## Layout
+
+---
+
+## 🗂️ Layout
 
 ```
 contracts/   Foundry project (src/{interfaces,core,consumers,receipts,mocks}, test/, script/)
@@ -353,3 +384,21 @@ scripts/     client, bidder, auditor, rater, demo, simulator, deploy-testnet, ph
 frontend/    home (live demos), app dashboard, auctions, explorer (indexer view), verify (audit), costs, claims
 docs/        SPEC.md, phase0.md, threat-model.md, extension-draft.md, demo.md, writeup.md, submission.md
 ```
+
+## 📚 Docs
+
+| | |
+|---|---|
+| 🎬 [Demo walkthrough](docs/demo.md) | For someone seeing it cold |
+| 📐 [Build spec](docs/SPEC.md) | The full design |
+| 🧱 [ERC-8004 extension draft](docs/extension-draft.md) | The extension these contracts propose |
+| 🛡️ [Threat model](docs/threat-model.md) | What is claimed and what isn't |
+| 🔍 [Phase 0 findings](docs/phase0.md) | Research notes and open items |
+| ✍️ [Write-up](docs/writeup.md) | The project story |
+| ✅ [Submission checklist](docs/submission.md) | What's done and what's left |
+
+<div align="center">
+
+**Built with** Foundry · Bun · Next.js · Chainlink CRE · Semaphore V4 · Monad
+
+</div>

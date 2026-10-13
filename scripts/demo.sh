@@ -26,7 +26,7 @@ wait_for() { for _ in $(seq 1 150); do eval "$1" >/dev/null 2>&1 && return 0; sl
 step() { printf '\n==> %s\n' "$*"; }
 
 for tool in anvil forge cast bun curl openssl; do
-  command -v "$tool" >/dev/null || { echo "missing $tool; see README.md Setup" >&2; exit 1; }
+  command -v "$tool" >/dev/null || { echo "missing $tool; see README.md Quick start" >&2; exit 1; }
 done
 if cast chain-id --rpc-url "$ANVIL_RPC_URL" >/dev/null 2>&1; then
   echo "something is already listening on $ANVIL_RPC_URL; stop it so the demo starts from a clean Anvil" >&2; exit 1

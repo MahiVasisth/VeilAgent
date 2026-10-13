@@ -2,7 +2,6 @@ import { connection } from "next/server";
 import { fetchAuctionData, fetchFeedbackData, fetchPublicData, fetchVeilData } from "@veil8004/sdk";
 import { deployment, publicClient } from "../lib/chain";
 import { LivePreview } from "./home/LivePreview";
-import { Playground } from "./home/Playground";
 import { ViewToggle } from "./home/ViewToggle";
 import { ArrowIcon, CheckIcon, EyeIcon, FileCheckIcon, GavelIcon, LockIcon, ShieldIcon, StarIcon } from "./icons";
 
@@ -51,8 +50,8 @@ export default async function Home() {
             <a className="btn primary" href="/app">
               Get started <ArrowIcon size={16} />
             </a>
-            <a className="btn" href="#try">
-              Try it in 10 seconds
+            <a className="btn" href="/indexer">
+              <EyeIcon size={16} /> What the public sees
             </a>
           </div>
           <ul className="hero-points">
@@ -76,14 +75,6 @@ export default async function Home() {
           </div>
         </section>
       )}
-
-      <section id="try" className="home-section">
-        <div className="section-title">
-          <span className="page-eyebrow">Try it</span>
-          <h2>Screen a company. Watch what goes public.</h2>
-        </div>
-        <Playground />
-      </section>
 
       <section className="home-section lens-section">
         <div className="section-title">
